@@ -43,7 +43,7 @@ DATASET_DICT = {
     "ruler": "simonjegou/ruler",
     "zero_scrolls": "simonjegou/zero_scrolls",
     "infinitebench": "MaxJeblick/InfiniteBench",
-    "longbench": "/modelopsnas/modelops/468440/program/kv/dataset/Xnhyacinth___long_bench"
+    "longbench": "Xnhyacinth/LongBench"
 }
 
 SCORER_DICT = {

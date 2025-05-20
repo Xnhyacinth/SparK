@@ -68,7 +68,7 @@ for press in "${press_names[@]}";
 #     bash evaluate.sh ${dataset} compress
 #     # python eval.py --dataset longbench --data_dir ${dataset} --model /modelopsnas/modelops/models/meta-llama/Meta-Llama-3.1-8B-Instruct --press_name snapkv --compression_ratio 0.25 --device "cuda:0" --save_dir /modelopsnas/modelops/468440/kvpress/output
 #   done
-
+# bash evaluate.sh qwen3-8b 1 0.5 snap_think 0,1 0.0 0.0
 # 等待所有后台任务完成
 wait
 

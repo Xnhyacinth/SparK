@@ -8,6 +8,7 @@
     "Meta-Llama-3-8B-Instruct": 7950,
     "Meta-Llama-3-70B-Instruct": 7950,
     "Qwen3-32B": 127500,
+    "Qwen3-8B": 127500,
     "meta-llama/Llama-3.2-1B-Instruct": 127500,
     "meta-llama/Llama-3.2-3B-Instruct": 127500,
     "mistralai/Mistral-Nemo-Instruct-2407": 127500,

@@ -25,17 +25,22 @@ compression_ratios=(128 512)
 # fi
 
 if [ "$model" = "llama3-8b-inst" ];then
-    model_name_or_path=/modelopsnas/modelops/models/meta-llama/Meta-Llama-3-8B-Instruct
-    # model_name_or_path=/modelopsnas/modelops/models/meta-llama/unsloth__llama-3-8b-Instruct
+    model_name_or_path=meta-llama/Meta-Llama-3-8B-Instruct
 fi
 if [ "$model" = "llama3.1-8b-inst" ];then
-    model_name_or_path=/modelopsnas/modelops/models/meta-llama/Meta-Llama-3.1-8B-Instruct
+    model_name_or_path=meta-llama/Llama-3.1-8B-Instruct
+fi
+if [ "$model" = "llama3.1-70b-inst" ];then
+    model_name_or_path=meta-llama/Llama-3.1-70B-Instruct
 fi
 if [ "$model" = "qwen3-32b" ];then
-    model_name_or_path=/modelopsnas/modelops/models/Qwen3-32B
+    model_name_or_path=Qwen/Qwen3-32B
 fi
 if [ "$model" = "llama3-70b-inst" ];then
-    model_name_or_path=/modelopsnas/modelops/models/LLM-Research/Meta-Llama-3-70B-Instruct
+    model_name_or_path=meta-llama/Meta-Llama-3-70B-Instruct
+fi
+if [ "$model" = "qwen3-8b" ];then
+    model_name_or_path=Qwen/Qwen3-8B
 fi
 
 extra_args=""
@@ -43,7 +48,7 @@ if [[ $compress_questions != 0 ]];then
   extra_args="${extra_args} --compress_questions True"
 fi
 
-output_prefix=/modelopsnas/modelops/468440/kvpress/logs0/${model}
+output_prefix=logs0/${model}
 mkdir -p ${output_prefix}
 # Iterate over press names and compression ratios
 # for i in "${!press_names[@]}"; do
@@ -54,7 +59,7 @@ mkdir -p ${output_prefix}
 #     for compression_ratio in "${compression_ratios[@]}"; do
 #       for data_dir in $dataset_list; do
 #         echo "Running press_name: $press on dataset ${data_dir} with compression_ratio: $compression_ratio on GPU cuda:$i"
-#         python eval.py --dataset $dataset --data_dir $data_dir --model $model_name_or_path --press_name $press --max_capacity_prompt $compression_ratio --key_channel_compression_ratio ${key_channel_compression_ratio} --device "auto" --save_dir /modelopsnas/modelops/468440/kvpress/output ${extra_args}
+#         python eval.py --dataset $dataset --data_dir $data_dir --model $model_name_or_path --press_name $press --max_capacity_prompt $compression_ratio --key_channel_compression_ratio ${key_channel_compression_ratio} --device "auto" --save_dir output ${extra_args}
 #       done
 #     done
 #   ) > ${output_prefix}/${press}_${compression_ratio}_${compress_questions}_channel${key_channel_compression_ratio}.log 2>&1 &
@@ -72,7 +77,7 @@ for compression_ratio in "${compression_ratios[@]}"; do
     for data_dir in $dataset_list; do
       
       echo "Running press_name: $press on dataset ${data_dir} with compression_ratio: $compression_ratio on GPU cuda:$i"
-      CUDA_VISIBLE_DEVICES=${gpus} python -u eval.py --dataset $dataset --data_dir $data_dir --model $model_name_or_path --press_name $press --max_capacity_prompt $compression_ratio --threshold_ratio ${threshold_ratio} --pooling_ratio ${pooling_ratio} --mode ${mode} --key_channel_compression_ratio ${key_channel_compression_ratio} --temperature ${temperature} --device "auto" --save_dir /modelopsnas/modelops/468440/kvpress/output_norm0 ${extra_args}
+      CUDA_VISIBLE_DEVICES=${gpus} python -u eval.py --dataset $dataset --data_dir $data_dir --model $model_name_or_path --press_name $press --max_capacity_prompt $compression_ratio --threshold_ratio ${threshold_ratio} --pooling_ratio ${pooling_ratio} --mode ${mode} --key_channel_compression_ratio ${key_channel_compression_ratio} --temperature ${temperature} --device "auto" --save_dir output_norm0 ${extra_args}
     done
   ) > ${output_prefix}/${press}_${compression_ratio}_${compress_questions}_channel${key_channel_compression_ratio}_t${temperature}_${mode}${pooling_ratio}.log 2>&1 &
 done
