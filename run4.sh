@@ -1,23 +1,11 @@
 
-if [ ! -d "/modelopsnas" ]; then
-    mkdir -p "/modelopsnas"
-    echo "/modelopsnas created"
-fi
-
-nas="alipayheyuan2-33-fdf14.cn-heyuan-alipay.nas.aliyuncs.com" #10T
-sudo mount -t nfs -o vers=3,nolock,proto=tcp,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport $nas:/ /modelopsnas
-#pip install transformers==4.37.0
-
-#model_path=/codenas/user/bingchang/checkpoints/merged/qwen-1.8b-quality-classifier-v1-0118-55000/
-# model_path=/ainative/modelops/246872/models/Qwen2-7B-Instruct
-
 #######################################################################
 #            
 #                         Group 1
 ######################################################################
 # pip install -U transformers
 bash install.sh
-bash run1.sh 0,1,2,3 llama3-70b-inst full_kv 0 0.0
+# bash run1.sh 0,1,2,3 llama3-70b-inst full_kv 0 0.0
 press_names=("streaming_llm" "snapkv" "snap_think" "snap_adathink" "expected_attention" "adasnapkv" "criti_snapkv" "tova" "observed_attention")
 press_names=("snapkv" "snap_think" "snap_adathink" "expected_attention" "adasnapkv" "criti_snapkv" "tova" "observed_attention")
 

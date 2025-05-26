@@ -169,198 +169,139 @@ class AdaThinKPress(BasePress):
         raise AttributeError(f"compression ratio cannot be set for {type(self).__name__}")
 
 def dynamic_score_selection_norm(queries, keys, threshold_ratio=0, key_channel_compression_ratio=0, pooling_ratio=0):
-    """
-    针对每个 token 动态筛选重要维度，保证每个 token 的乘积范数达到原始范数的 99%。
-
-    Args:
-        queries: Tensor of shape (bsz, num_heads, query_len, head_dim)
-        keys: Tensor of shape (bsz, num_heads, key_len, head_dim)
-        target_ratio: float, 保留原始范数的比例（默认 99%）
-
-    Returns:
-        compressed_queries: Tensor of shape (bsz, num_heads, query_len, selected_head_dim)
-        compressed_keys: Tensor of shape (bsz, num_heads, key_len, selected_head_dim)
-        mask: Boolean Tensor of shape (bsz, num_heads, query_len, head_dim), 表示每个 token 的筛选掩码
-    """
     bsz, num_heads, seq_len, head_dim = keys.shape
-    # Step 1: 计算原始范数
     queries_norm = torch.nn.functional.normalize(queries, dim=-1)
     keys_norm = torch.nn.functional.normalize(keys, dim=-1)
-    # attention_scores = torch.matmul(queries_norm, keys_norm.transpose(-1, -2))  # (bsz, num_heads, query_len, key_len)
-    # original_norm = torch.norm(attention_scores, dim=-2, p=2).unsqueeze(-1)  # (bsz, num_heads, key_len)
-
-    # Step 2: 计算每个维度的贡献
-    # q_norm = torch.norm(queries_norm, dim=-2, p=2).unsqueeze(-2)
-    # k_norm = torch.pow(keys_norm, 2)
-    # contributions = k_norm * q_norm
     
     q_norm = torch.norm(queries, dim=-2, p=2).unsqueeze(-2)
     k_norm = torch.pow(keys, 2)
-    sorted_indices = torch.argsort(k_norm * q_norm, dim=-1, descending=True)  # (bsz, num_heads, seq_len, head_dim)
+    sorted_indices = torch.argsort(k_norm * q_norm, dim=-1, descending=True)
     contributions = torch.pow(keys, 2) * torch.norm(queries, dim=-2, p=2).unsqueeze(-2)
     group_indicator = torch.zeros(bsz, num_heads, seq_len).to(queries.device)
     topk_ratios = [key_channel_compression_ratio]
     topk = head_dim - int(key_channel_compression_ratio * head_dim)
-    # breakpoint()
     if threshold_ratio != 0:
-        # contributions = torch.stack(contributions, dim=-1)
-        sorted_contributions = torch.gather(contributions, dim=-1, index=sorted_indices)  # (bsz, num_heads, key_len, head_dim)
+        sorted_contributions = torch.gather(contributions, dim=-1, index=sorted_indices)
         cumulative_scores = torch.cumsum(sorted_contributions, dim=-1)
-        is_above_threshold = cumulative_scores > (threshold_ratio * cumulative_scores[..., -1]).unsqueeze(-1)   # (bsz, num_heads, key_len, head_dim)
-        # 找到第一个满足条件的索引
-        threshold_indices = is_above_threshold.to(torch.float32).argmax(dim=-1)  # (bsz, num_heads, key_len)
-        # breakpoint()
+        is_above_threshold = cumulative_scores > (0.99 * cumulative_scores[..., -1]).unsqueeze(-1)
+        threshold_indices = is_above_threshold.to(torch.float32).argmax(dim=-1)
         if threshold_ratio == 0.99:
             mask, topk_ratios, group_indicator = dynamic_group(is_above_threshold, head_dim, keys, sorted_indices)
+        elif threshold_ratio == 0.990:
+            mask, topk_ratios, group_indicator = dynamic_group0(is_above_threshold, head_dim, keys, sorted_indices)
         elif threshold_ratio == 0.991:
             mask, topk_ratios, group_indicator = dynamic_group1(is_above_threshold, head_dim, keys, sorted_indices)
         elif threshold_ratio == 0.992:
-            mask, topk_ratios, group_indicator = dynamic_group0(is_above_threshold, head_dim, keys, sorted_indices)
+            mask, topk_ratios, group_indicator = dynamic_group2(is_above_threshold, head_dim, keys, sorted_indices)
+        elif threshold_ratio == 0.9922:
+            mask, topk_ratios, group_indicator = dynamic_group22(is_above_threshold, head_dim, keys, sorted_indices)
+        elif threshold_ratio == 0.993:
+            mask, topk_ratios, group_indicator = dynamic_group3(is_above_threshold, head_dim, keys, sorted_indices)
+        elif threshold_ratio == 0.994:
+            mask, topk_ratios, group_indicator = dynamic_group4(is_above_threshold, head_dim, keys, sorted_indices)
+        elif threshold_ratio == 0.995:
+            mask, topk_ratios, group_indicator = dynamic_group5(is_above_threshold, head_dim, keys, sorted_indices)
+        elif threshold_ratio == 0.996:
+            mask, topk_ratios, group_indicator = dynamic_group6(is_above_threshold, head_dim, keys, sorted_indices)
         else:
             mask = create_mask_by_threshold(sorted_indices, threshold_indices)
+
+        num_selected_channels = torch.sum(mask).item()
+        print(f"Number of selected channels: {num_selected_channels}")
+        selected_channels_per_token = torch.sum(mask, dim=-1)
+        print(f"Selected channels per token shape: {selected_channels_per_token}")
+        print(f"Example: Selected channels for [batch=0, head=0, token=0]: {selected_channels_per_token[0, 0, 0].item()}")
     else:
         mask = torch.ones_like(keys, dtype=torch.bool)
         mask.scatter_(-1, sorted_indices[..., -int(key_channel_compression_ratio * head_dim):], False)
-    # breakpoint()
+
+
     if pooling_ratio == 0.5:
-        # print('pca')
         return generate_pca_fill(keys.to(torch.float32), mask).to(keys.dtype)
     elif pooling_ratio == 0.3:
-        # print('pca')
         return generate_interpolated_fill(keys, mask)
     elif pooling_ratio == 0.9:
-        # print('pca')
         return gamma(keys, ~mask)
     elif pooling_ratio == 0.7:
-        # print('pca')
         return normal(keys, ~mask)
     elif pooling_ratio == 0.75:
-        # print('pca')
         return normal_attn(contributions, q_norm, keys, ~mask, sorted_indices, topk)
     elif pooling_ratio == 0.755 or pooling_ratio == 0.754:
-        # print('pca')
         return normal_attn(contributions, q_norm, keys, ~mask, sorted_indices, topk, False)
     elif pooling_ratio == 0.7555 or pooling_ratio == 0.7554:
-        # print('pca')
         return normal_attn(contributions, q_norm, keys, ~mask, sorted_indices, topk, False, True)
     elif pooling_ratio == 0.6:
-        # print('pca')
         return exponential(keys, ~mask)
     elif pooling_ratio == 0.65:
-        # print('pca')
         return exponential_attn(contributions, q_norm, keys, ~mask, sorted_indices, topk)
     elif pooling_ratio == 0.654 or pooling_ratio == 0.6555:
-        # print('pca')
         return exponential_attn(contributions, q_norm, keys, ~mask, sorted_indices, topk, False)
     elif pooling_ratio == 0.6556 or pooling_ratio == 0.6554:
-        # print('pca')
         return exponential_attn(contributions, q_norm, keys, ~mask, sorted_indices, topk, False, True)
-    elif pooling_ratio == 0.68:
-        # print('pca')
-        return exponential_attn_grouped(contributions, q_norm, keys, ~mask, sorted_indices, group_indicator, topk_ratios, False, True)
+    elif pooling_ratio == threshold_ratio:
+        return exponential_attn_grouped(contributions, q_norm, keys, ~mask, sorted_indices, group_indicator, topk_ratios, True, False)
     
-    # generate_pca_fill(keys.to(torch.float32), mask)
-    num_selected_channels = torch.sum(mask).item()  # 统计所有位置中被选中的 channel 数量
-    print(f"Number of selected channels: {num_selected_channels}")
-    selected_channels_per_token = torch.sum(mask, dim=-1)  # (bsz, num_heads, seq_len)
-    print(f"Selected channels per token shape: {selected_channels_per_token}")
-    print(f"Example: Selected channels for [batch=0, head=0, token=0]: {selected_channels_per_token[0, 0, 0].item()}")
-
-    # Step 4: 裁剪 keys
-    pruned_keys = keys * mask # 将未保留的 channel 设置为 0
+    pruned_keys = keys * mask
     return pruned_keys
 
 def dynamic_score_selection(queries, keys, threshold_ratio=0, key_channel_compression_ratio=0, pooling_ratio=0):
-    """
-    针对每个 token 动态筛选重要维度，保证每个 token 的乘积范数达到原始范数的 99%。
-
-    Args:
-        queries: Tensor of shape (bsz, num_heads, query_len, head_dim)
-        keys: Tensor of shape (bsz, num_heads, key_len, head_dim)
-        target_ratio: float, 保留原始范数的比例（默认 99%）
-
-    Returns:
-        compressed_queries: Tensor of shape (bsz, num_heads, query_len, selected_head_dim)
-        compressed_keys: Tensor of shape (bsz, num_heads, key_len, selected_head_dim)
-        mask: Boolean Tensor of shape (bsz, num_heads, query_len, head_dim), 表示每个 token 的筛选掩码
-    """
     bsz, num_heads, seq_len, head_dim = keys.shape
-    # Step 1: 计算原始范数
     queries_norm = torch.nn.functional.normalize(queries, dim=-1)
     keys_norm = torch.nn.functional.normalize(keys, dim=-1)
-    attention_scores = torch.matmul(queries_norm, keys_norm.transpose(-1, -2))  # (bsz, num_heads, query_len, key_len)
-    original_norm = torch.norm(attention_scores, dim=-2, p=2).unsqueeze(-1)  # (bsz, num_heads, key_len)
+    attention_scores = torch.matmul(queries_norm, keys_norm.transpose(-1, -2))
+    original_norm = torch.norm(attention_scores, dim=-2, p=2).unsqueeze(-1)
 
-    # Step 2: 计算每个维度的贡献
     dim_contributions = []
     contributions = []
     for d in range(queries.size(-1)):
         keys_masked = torch.zeros_like(keys_norm)
-        keys_masked[..., d] = keys_norm[..., d]  # 仅保留第 i 个维度的特征
+        keys_masked[..., d] = keys_norm[..., d]
 
         attention_scores_masked = torch.matmul(queries_norm, keys_masked.transpose(-1, -2))
-        masked_norm = torch.norm(attention_scores_masked, dim=-2, p=2)  # (bsz, num_heads, key_len)
+        masked_norm = torch.norm(attention_scores_masked, dim=-2, p=2)
         contribution = masked_norm / original_norm.squeeze(-1)
-        # contribution = torch.mean(masked_norm / original_norm.squeeze(-1))  # 范数归一化求平均贡献
-        # breakpoint()
-        # 存储 (维度索引, 贡献值)
         dim_contributions.append(masked_norm)
         contributions.append(contribution)
-    # breakpoint()
-    dim_contributions = torch.stack(dim_contributions, dim=-1)  # (bsz, num_heads, key_len, head_dim)
-    sorted_indices = torch.argsort(dim_contributions, dim=-1, descending=True)  # (bsz, num_heads, seq_len, head_dim)
-    # breakpoint()
+    dim_contributions = torch.stack(dim_contributions, dim=-1)
+    sorted_indices = torch.argsort(dim_contributions, dim=-1, descending=True)
     if threshold_ratio != 0:
         contributions = torch.stack(contributions, dim=-1)
-        sorted_contributions = torch.gather(contributions, dim=-1, index=sorted_indices)  # (bsz, num_heads, key_len, head_dim)
+        sorted_contributions = torch.gather(contributions, dim=-1, index=sorted_indices)
         cumulative_scores = torch.cumsum(sorted_contributions, dim=-1)
-        is_above_threshold = cumulative_scores > (threshold_ratio * cumulative_scores[..., -1]).unsqueeze(-1)   # (bsz, num_heads, key_len, head_dim)
-        # 找到第一个满足条件的索引
-        threshold_indices = is_above_threshold.to(torch.float32).argmax(dim=-1)  # (bsz, num_heads, key_len)
-        # breakpoint()
+        is_above_threshold = cumulative_scores > (threshold_ratio * cumulative_scores[..., -1]).unsqueeze(-1)
+        threshold_indices = is_above_threshold.to(torch.float32).argmax(dim=-1)
         mask = create_mask_by_threshold(sorted_indices, threshold_indices)
     else:
         mask = torch.ones_like(keys, dtype=torch.bool)
         mask.scatter_(-1, sorted_indices[..., -int(key_channel_compression_ratio * head_dim):], False)
-    # breakpoint()
     if pooling_ratio == 0.5:
-        # print('pca')
         return generate_pca_fill(keys.to(torch.float32), mask).to(keys.dtype)
     elif pooling_ratio == 0.3:
-        # print('pca')
         return generate_interpolated_fill(keys, mask)
     elif pooling_ratio == 0.9:
-        # print('pca')
         return gamma(keys, ~mask)
     elif pooling_ratio == 0.7:
-        # print('pca')
         return normal(keys, ~mask)
     elif pooling_ratio == 0.75:
-        # print('pca')
         return normal_attn(dim_contributions, queries_norm, keys, ~mask, int(key_channel_compression_ratio * head_dim))
     elif pooling_ratio == 0.6:
-        # print('pca')
         return exponential(keys, ~mask)
     elif pooling_ratio == 0.65:
-        # print('pca')
         return exponential_attn(attention_scores, queries_norm, keys, ~mask)
     elif pooling_ratio == 0.99:
         return dynamic_group()
-    # generate_pca_fill(keys.to(torch.float32), mask)
-    num_selected_channels = torch.sum(mask).item()  # 统计所有位置中被选中的 channel 数量
+    num_selected_channels = torch.sum(mask).item()
     print(f"Number of selected channels: {num_selected_channels}")
-    selected_channels_per_token = torch.sum(mask, dim=-1)  # (bsz, num_heads, seq_len)
+    selected_channels_per_token = torch.sum(mask, dim=-1)
     print(f"Selected channels per token shape: {selected_channels_per_token}")
     print(f"Example: Selected channels for [batch=0, head=0, token=0]: {selected_channels_per_token[0, 0, 0].item()}")
 
-    # Step 4: 裁剪 keys
-    pruned_keys = keys * mask # 将未保留的 channel 设置为 0
+    pruned_keys = keys * mask
     return pruned_keys
 
 def dynamic_group(is_above_threshold, head_dim, keys, sorted_indices):
-    bsz, num_heads, seq_len, head_dim = keys.shape
-    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)  # (bsz, num_heads, key_len)
-    group_indicator = torch.zeros_like(first_above_threshold_idx)  # 形状为 (bsz, num_heads, key_len)
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
 
     group_indicator[first_above_threshold_idx <= int(0.2 * head_dim)] = 0
     group_indicator[(first_above_threshold_idx > int(0.2 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 1
@@ -368,33 +309,146 @@ def dynamic_group(is_above_threshold, head_dim, keys, sorted_indices):
     group_indicator[(first_above_threshold_idx > int(0.6 * head_dim)) & (first_above_threshold_idx <= int(0.8 * head_dim))] = 3
     group_indicator[first_above_threshold_idx > int(0.8 * head_dim)] = 4
 
-    total_mask = torch.zeros_like(keys, dtype=torch.bool)  # (bsz, num_heads, seq_len, head_dim)
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
     topk_ratios = [0.1, 0.3, 0.5, 0.7, 0.9]
     for group_id, ratio in zip([0, 1, 2, 3, 4], topk_ratios):
-        group_mask = (group_indicator == group_id)  # (bsz, num_heads, seq_len)
+        group_mask = (group_indicator == group_id)
         
-        # 若分组中无元素，跳过
         if not group_mask.any():
             continue
         
         keep_channels = int(ratio * head_dim)
         
-        top_indices = sorted_indices[..., :keep_channels]  # (bsz, num_heads, seq_len, keep_channels)
+        top_indices = sorted_indices[..., :keep_channels]
         group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
-        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)  # (bsz, num_heads, seq_len, head_dim)
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
         
-        # 合并掩码：分组掩码 + Top-K 掩码
         sub_mask = group_mask_expanded & group_topk_mask
         
-        # 合并到总掩码
         total_mask |= sub_mask
-    # breakpoint()
+    return total_mask, topk_ratios, group_indicator
+
+def dynamic_group22(is_above_threshold, head_dim, keys, sorted_indices):
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
+
+    group_indicator[first_above_threshold_idx <= int(0.2 * head_dim)] = 0
+    group_indicator[(first_above_threshold_idx > int(0.2 * head_dim)) & (first_above_threshold_idx <= int(0.3 * head_dim))] = 1
+    group_indicator[(first_above_threshold_idx > int(0.3 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 2
+    group_indicator[(first_above_threshold_idx > int(0.4 * head_dim)) & (first_above_threshold_idx <= int(0.5 * head_dim))] = 3
+    group_indicator[(first_above_threshold_idx > int(0.5 * head_dim)) & (first_above_threshold_idx <= int(0.6 * head_dim))] = 4
+    group_indicator[(first_above_threshold_idx > int(0.6 * head_dim)) & (first_above_threshold_idx <= int(0.8 * head_dim))] = 5
+    group_indicator[first_above_threshold_idx > int(0.8 * head_dim)] = 6
+
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
+    topk_ratios = [0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0]
+    for group_id, ratio in zip(list(range(len(topk_ratios))), topk_ratios):
+        group_mask = (group_indicator == group_id)
+        
+        if not group_mask.any():
+            continue
+        
+        keep_channels = int(ratio * head_dim)
+        
+        top_indices = sorted_indices[..., :keep_channels]
+        group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
+        
+        sub_mask = group_mask_expanded & group_topk_mask
+        
+        total_mask |= sub_mask
+    return total_mask, topk_ratios, group_indicator
+
+def dynamic_group3(is_above_threshold, head_dim, keys, sorted_indices):
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
+
+    group_indicator[first_above_threshold_idx <= int(0.2 * head_dim)] = 0
+    group_indicator[(first_above_threshold_idx > int(0.2 * head_dim)) & (first_above_threshold_idx <= int(0.3 * head_dim))] = 1
+    group_indicator[(first_above_threshold_idx > int(0.3 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 2
+    group_indicator[(first_above_threshold_idx > int(0.4 * head_dim)) & (first_above_threshold_idx <= int(0.5 * head_dim))] = 3
+    group_indicator[first_above_threshold_idx > int(0.5 * head_dim)] = 4
+
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
+    topk_ratios = [0.2, 0.3, 0.4, 0.5, 0.6]
+    for group_id, ratio in zip(list(range(len(topk_ratios))), topk_ratios):
+        group_mask = (group_indicator == group_id)
+        
+        if not group_mask.any():
+            continue
+        
+        keep_channels = int(ratio * head_dim)
+        
+        top_indices = sorted_indices[..., :keep_channels]
+        group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
+        
+        sub_mask = group_mask_expanded & group_topk_mask
+        
+        total_mask |= sub_mask
+    return total_mask, topk_ratios, group_indicator
+
+def dynamic_group4(is_above_threshold, head_dim, keys, sorted_indices):
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
+
+    group_indicator[first_above_threshold_idx <= int(0.3 * head_dim)] = 0
+    group_indicator[(first_above_threshold_idx > int(0.3 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 1
+    group_indicator[(first_above_threshold_idx > int(0.4 * head_dim)) & (first_above_threshold_idx <= int(0.5 * head_dim))] = 2
+    group_indicator[first_above_threshold_idx > int(0.5 * head_dim)] = 3
+
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
+    topk_ratios = [0.3, 0.4, 0.5, 0.6]
+    for group_id, ratio in zip(list(range(len(topk_ratios))), topk_ratios):
+        group_mask = (group_indicator == group_id)
+        
+        if not group_mask.any():
+            continue
+        
+        keep_channels = int(ratio * head_dim)
+        
+        top_indices = sorted_indices[..., :keep_channels]
+        group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
+        
+        sub_mask = group_mask_expanded & group_topk_mask
+        
+        total_mask |= sub_mask
+    return total_mask, topk_ratios, group_indicator
+
+def dynamic_group5(is_above_threshold, head_dim, keys, sorted_indices):
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
+
+    group_indicator[first_above_threshold_idx <= int(0.3 * head_dim)] = 0
+    group_indicator[(first_above_threshold_idx > int(0.3 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 1
+    group_indicator[(first_above_threshold_idx > int(0.4 * head_dim)) & (first_above_threshold_idx <= int(0.5 * head_dim))] = 2
+    group_indicator[(first_above_threshold_idx > int(0.5 * head_dim)) & (first_above_threshold_idx <= int(0.6 * head_dim))] = 3
+    group_indicator[first_above_threshold_idx > int(0.6 * head_dim)] = 4
+
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
+    topk_ratios = [0.3, 0.4, 0.5, 0.6, 0.7]
+    for group_id, ratio in zip(list(range(len(topk_ratios))), topk_ratios):
+        group_mask = (group_indicator == group_id)
+        
+        if not group_mask.any():
+            continue
+        
+        keep_channels = int(ratio * head_dim)
+        
+        top_indices = sorted_indices[..., :keep_channels]
+        group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
+        
+        sub_mask = group_mask_expanded & group_topk_mask
+        
+        total_mask |= sub_mask
     return total_mask, topk_ratios, group_indicator
 
 def dynamic_group0(is_above_threshold, head_dim, keys, sorted_indices):
     bsz, num_heads, seq_len, head_dim = keys.shape
-    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)  # (bsz, num_heads, key_len)
-    group_indicator = torch.zeros_like(first_above_threshold_idx)  # 形状为 (bsz, num_heads, key_len)
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
 
     group_indicator[first_above_threshold_idx <= int(0.2 * head_dim)] = 0
     group_indicator[(first_above_threshold_idx > int(0.2 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 1
@@ -402,125 +456,154 @@ def dynamic_group0(is_above_threshold, head_dim, keys, sorted_indices):
     group_indicator[(first_above_threshold_idx > int(0.6 * head_dim)) & (first_above_threshold_idx <= int(0.8 * head_dim))] = 3
     group_indicator[first_above_threshold_idx > int(0.8 * head_dim)] = 4
 
-    total_mask = torch.zeros_like(keys, dtype=torch.bool)  # (bsz, num_heads, seq_len, head_dim)
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
     topk_ratios = [0.2, 0.4, 0.6, 0.8, 1.0]
     for group_id, ratio in zip([0, 1, 2, 3, 4], topk_ratios):
-        group_mask = (group_indicator == group_id)  # (bsz, num_heads, seq_len)
+        group_mask = (group_indicator == group_id)
         
-        # 若分组中无元素，跳过
         if not group_mask.any():
             continue
         
         keep_channels = int(ratio * head_dim)
         
-        top_indices = sorted_indices[..., :keep_channels]  # (bsz, num_heads, seq_len, head_dim)
+        top_indices = sorted_indices[..., :keep_channels]
         group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
-        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)  # (bsz, num_heads, seq_len, head_dim)
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
         
-        # 合并掩码：分组掩码 + Top-K 掩码
         sub_mask = group_mask_expanded & group_topk_mask
         
-        # 合并到总掩码
         total_mask |= sub_mask
-    # breakpoint()
     return total_mask, topk_ratios, group_indicator
 
 def dynamic_group1(is_above_threshold, head_dim, keys, sorted_indices):
     bsz, num_heads, seq_len, head_dim = keys.shape
-    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)  # (bsz, num_heads, key_len)
-    group_indicator = torch.zeros_like(first_above_threshold_idx)  # 形状为 (bsz, num_heads, key_len)
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
 
     group_indicator[first_above_threshold_idx <= int(0.25 * head_dim)] = 0
     group_indicator[(first_above_threshold_idx > int(0.25 * head_dim)) & (first_above_threshold_idx <= int(0.5 * head_dim))] = 1
     group_indicator[(first_above_threshold_idx > int(0.5 * head_dim)) & (first_above_threshold_idx <= int(0.75 * head_dim))] = 2
     group_indicator[first_above_threshold_idx > int(0.75 * head_dim)] = 3
 
-    total_mask = torch.zeros_like(keys, dtype=torch.bool)  # (bsz, num_heads, seq_len, head_dim)
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
     topk_ratios = [0.25, 0.5, 0.75, 1.0]
     for group_id, ratio in zip([0, 1, 2, 3], topk_ratios):
-        group_mask = (group_indicator == group_id)  # (bsz, num_heads, seq_len)
+        group_mask = (group_indicator == group_id)
         
-        # 若分组中无元素，跳过
         if not group_mask.any():
             continue
         
         keep_channels = int(ratio * head_dim)
         
-        top_indices = sorted_indices[..., :keep_channels]  # (bsz, num_heads, seq_len, head_dim)
+        top_indices = sorted_indices[..., :keep_channels]
         group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
-        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)  # (bsz, num_heads, seq_len, head_dim)
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
         
-        # 合并掩码：分组掩码 + Top-K 掩码
         sub_mask = group_mask_expanded & group_topk_mask
         
-        # 合并到总掩码
         total_mask |= sub_mask
-    # breakpoint()
     return total_mask, topk_ratios, group_indicator
 
+def dynamic_group2(is_above_threshold, head_dim, keys, sorted_indices):
+    bsz, num_heads, seq_len, head_dim = keys.shape
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
+
+    group_indicator[first_above_threshold_idx <= int(0.25 * head_dim)] = 0
+    group_indicator[(first_above_threshold_idx > int(0.25 * head_dim)) & (first_above_threshold_idx <= int(0.3 * head_dim))] = 1
+    group_indicator[(first_above_threshold_idx > int(0.3 * head_dim)) & (first_above_threshold_idx <= int(0.35 * head_dim))] = 2
+    group_indicator[(first_above_threshold_idx > int(0.35 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 3
+    group_indicator[first_above_threshold_idx > int(0.4 * head_dim)] = 4
+
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
+    topk_ratios = [0.2, 0.3, 0.35, 0.4, 0.5]
+    for group_id, ratio in zip(list(range(len(topk_ratios))), topk_ratios):
+        group_mask = (group_indicator == group_id)
+        
+        if not group_mask.any():
+            continue
+        
+        keep_channels = int(ratio * head_dim)
+        
+        top_indices = sorted_indices[..., :keep_channels]
+        group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
+        
+        sub_mask = group_mask_expanded & group_topk_mask
+        
+        total_mask |= sub_mask
+    return total_mask, topk_ratios, group_indicator
+
+def dynamic_group6(is_above_threshold, head_dim, keys, sorted_indices):
+    bsz, num_heads, seq_len, head_dim = keys.shape
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
+
+    group_indicator[first_above_threshold_idx <= int(0.25 * head_dim)] = 0
+    group_indicator[(first_above_threshold_idx > int(0.25 * head_dim)) & (first_above_threshold_idx <= int(0.3 * head_dim))] = 1
+    group_indicator[(first_above_threshold_idx > int(0.3 * head_dim)) & (first_above_threshold_idx <= int(0.35 * head_dim))] = 2
+    group_indicator[(first_above_threshold_idx > int(0.35 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 3
+    group_indicator[(first_above_threshold_idx > int(0.4 * head_dim)) & (first_above_threshold_idx <= int(0.6 * head_dim))] = 4
+    group_indicator[first_above_threshold_idx > int(0.6 * head_dim)] = 5
+
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
+    topk_ratios = [0.2, 0.25, 0.3, 0.35, 0.4, 0.5]
+    for group_id, ratio in zip(list(range(len(topk_ratios))), topk_ratios):
+        group_mask = (group_indicator == group_id)
+        
+        if not group_mask.any():
+            continue
+        
+        keep_channels = int(ratio * head_dim)
+        
+        top_indices = sorted_indices[..., :keep_channels]
+        group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
+        
+        sub_mask = group_mask_expanded & group_topk_mask
+        
+        total_mask |= sub_mask
+    return total_mask, topk_ratios, group_indicator
 
 def exponential_attn_grouped(scores, queries, keys, mask, index, group_indicator, topk_ratios=[0.3, 0.5, 0.7], is_avg=True, is_up=False):
-    """
-    Args:
-        scores:         注意力分数张量 (bsz, num_heads, seq_len, head_dim)
-        queries:        查询向量 (bsz, num_heads, seq_len, head_dim)
-        keys:           键向量 (bsz, num_heads, seq_len, head_dim)
-        mask:           原始掩码 (bsz, seq_len)
-        group_indicator:分组指示器 (bsz, num_heads, seq_len), 值为 0/1/2
-        topk_ratios:    每组保留的 Top-K 比例 [group0_ratio, group1_ratio, group2_ratio]
-    """
     bsz, num_heads, seq_len, head_dim = keys.shape
     device = keys.device
     
-    # 初始化总输出为全零
     new_values_total = torch.zeros_like(keys)
     
-    # 遍历每个分组
     for group_id, ratio in enumerate(topk_ratios):
-        # 提取当前分组的掩码 (bsz, num_heads, seq_len)
         group_mask = (group_indicator == group_id)
         if not group_mask.any():
             continue
         
-        # --- 步骤1: 计算当前分组的阈值 ---
-        # 扩展分组掩码到 head_dim 维度 (bsz, num_heads, seq_len, head_dim)
         group_mask_expanded = group_mask.unsqueeze(-1).expand(-1, -1, -1, head_dim)
         
-        # 提取当前分组的 scores 和 queries
         group_scores = torch.where(group_mask_expanded, scores, torch.tensor(-float('inf'), device=device))
-        group_queries = torch.where(group_mask_expanded, queries, torch.tensor(1.0, device=device))  # 避免除以零
+        group_queries = torch.where(group_mask_expanded, queries, torch.tensor(1.0, device=device))
         
-        # 计算当前分组的 Top-K 阈值
-        k = max(1, int(ratio * head_dim))  # 至少保留1个通道
+        k = max(1, int(ratio * head_dim))
         threshold_group = torch.topk(group_scores, k=k, dim=-1)[0][..., -1, None]
         
-        # --- 步骤2: 生成当前分组的掩码 ---
         mask_low_group = group_scores < threshold_group
         masked_scores_group = torch.where(mask_low_group, group_scores, torch.tensor(0.0, device=device))
         
-        # --- 步骤3: 按分组进行均值或采样 ---
         if is_avg:
-            # 分组均值计算
             mask_sum_group = mask_low_group.sum(dim=-1, keepdim=True)
-            mask_sum_group = mask_sum_group + (mask_sum_group == 0) * 1  # 避免除零
+            mask_sum_group = mask_sum_group + (mask_sum_group == 0) * 1
             avg_scores_group = masked_scores_group.sum(dim=-1, keepdim=True) / mask_sum_group
             new_values_group = torch.sqrt(avg_scores_group / group_queries)
         else:
-            # 分组指数分布采样
             mean_group = group_scores.mean(dim=-1, keepdim=True)
             mean_group = torch.clamp(mean_group, min=1e-5)
             rate_group = 1.0 / mean_group
             
-            # 生成指数分布样本
             exponential_dist = torch.distributions.exponential.Exponential(rate_group)
             values_group = exponential_dist.sample((head_dim,)).permute(1, 2, 3, 0)
             
-            # 根据阈值调整采样值
             sorted_values_group = torch.sort(values_group, dim=-1, descending=True)[0]
             output_values_group = torch.zeros_like(values_group)
             output_values_group = output_values_group.scatter(dim=-1, index=index, src=sorted_values_group)
             
-            # 应用阈值逻辑
             threshold_expanded_group = threshold_group.expand_as(output_values_group)
             if is_up:
                 values_group = torch.where(output_values_group > threshold_expanded_group, threshold_expanded_group, output_values_group)
@@ -529,16 +612,13 @@ def exponential_attn_grouped(scores, queries, keys, mask, index, group_indicator
             
             new_values_group = torch.sqrt(values_group / group_queries)
         
-        # --- 步骤4: 合并到总输出 ---
         new_values_total = torch.where(group_mask_expanded, new_values_group, new_values_total)
     
-    # 应用原始掩码逻辑
     final_mask = torch.where(
-        mask.unsqueeze(1).unsqueeze(-1) == 1, 
+        mask == 1, 
         torch.where(keys > 0, torch.tensor(1, dtype=keys.dtype), torch.tensor(-1, dtype=keys.dtype)),
         torch.tensor(0, dtype=keys.dtype)
     )
-    
     return torch.where(
         final_mask == 1, new_values_total.abs(),
         torch.where(final_mask == -1, -new_values_total.abs(), keys)
@@ -551,16 +631,14 @@ def exponential_attn(scores, queries, keys, mask, index, topk=63, is_avg=True, i
         torch.where(keys > 0, torch.tensor(1, dtype=keys.dtype), torch.tensor(-1, dtype=keys.dtype)),
         torch.tensor(0, dtype=keys.dtype)
     )
-    # breakpoint()
     threshold = torch.topk(scores, k=topk, dim=-1)[0][..., -1, None]
     mask_low = scores < threshold 
     masked_scores = torch.where(mask_low, scores, torch.tensor(0.0, device=scores.device)) 
-    mask_sum = mask_low.sum(dim=-1, keepdim=True)  # (bsz, num_heads, key_len, 1)
+    mask_sum = mask_low.sum(dim=-1, keepdim=True)
     mask_sum = mask_sum + (mask_sum == 0) * 1
     avg_scores = (masked_scores.sum(dim=-1, keepdim=True) / mask_sum).repeat(1, 1, 1, head_dim)
     if is_avg:
         new_values = torch.sqrt(avg_scores / queries)
-        # breakpoint()
     else:
         mean = scores.mean(dim=-1, keepdim=True)
         mean = torch.clamp(mean, min=1e-5)
@@ -584,8 +662,6 @@ def exponential_attn(scores, queries, keys, mask, index, topk=63, is_avg=True, i
     )
 
 def exponential(keys, mask):
-    # result = torch.zeros_like(keys)
-    # result[mask == 1] = torch.where(keys[mask == 1] > 0, torch.tensor(1, dtype=result.dtype), torch.tensor(-1, dtype=result.dtype))
     mask = torch.where(
         mask == 1, 
         torch.where(keys > 0, torch.tensor(1, dtype=keys.dtype), torch.tensor(-1, dtype=keys.dtype)),
@@ -613,29 +689,20 @@ def normal_attn(scores, queries, keys, mask, index, topk=63, is_avg=True, is_up=
     threshold = torch.topk(scores, k=topk, dim=-1)[0][..., -1, None]
     mask_low = scores < threshold 
     masked_scores = torch.where(mask_low, scores, torch.tensor(0.0, device=scores.device)) 
-    mask_sum = mask_low.sum(dim=-1, keepdim=True)  # (bsz, num_heads, key_len, 1)
+    mask_sum = mask_low.sum(dim=-1, keepdim=True)
     mask_sum = mask_sum + (mask_sum == 0) * 1
     avg_scores = (masked_scores.sum(dim=-1, keepdim=True) / mask_sum).repeat(1, 1, 1, head_dim)
     if is_avg:
         new_values = torch.sqrt(avg_scores / queries)
-        # breakpoint()
     else:
         mean = scores.mean(dim=-1, keepdim=True)
         std = scores.std(dim=-1, keepdim=True)
-        # mean = torch.clamp(mean, min=1e-5)
-        # std = torch.clamp(std, min=1e-5)
-        # new_values = torch.normal(mean.expand_as(keys), std.expand_as(keys))
         norm_dist = torch.distributions.normal.Normal(mean, std)
         values = norm_dist.sample((scores.shape[-1],)).squeeze(-1).permute(1, 2, 3, 0).abs()
-        # values = exponential_dist.sample((scores.shape[-1],)).squeeze(-1).view(scores.shape[0], scores.shape[1], scores.shape[2], -1)
-        # mask = new_values < threshold
-        # values.permute(1, 2, 3, 4, 0).squeeze(-2)[0,0,0]
         threshold_expanded = threshold.expand_as(values)
         sorted_values = torch.sort(values, dim=-1, descending=True)[0]
         output_values = torch.zeros_like(values) 
         output_values = output_values.scatter(dim=-1, index=index, src=sorted_values)
-        # torch.argsort(output_values, dim=-1, descending=True)
-        # breakpoint()
         if is_up:
             values = torch.where(output_values > threshold_expanded, threshold_expanded, output_values)
         else:
@@ -657,8 +724,6 @@ def normal(keys, mask):
     std = keys.std(dim=-1, keepdim=True)
     mean = torch.clamp(mean, min=1e-5)
     std = torch.clamp(std, min=1e-5)
-    # breakpoint()
-    # new_values = torch.normal(mean.expand_as(keys), std.expand_as(keys))
     norm_dist = torch.distributions.normal.Normal(mean, std)
     new_values = norm_dist.sample((keys.shape[-1],)).squeeze(-1).view(keys.shape[0], keys.shape[1], keys.shape[2], -1)
     return torch.where(

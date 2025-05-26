@@ -46,21 +46,21 @@ for press in "${press_names[@]}";
     # bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993 
 
 
-    bash test0.sh llama3-70b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.99
+    bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 4,5,6,7 0.0 0.992
 
-    bash test1.sh llama3-70b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.99
+    bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.992
 
-    bash test0.sh llama3-70b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.99 0.99
+    bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.99 0.99
 
-    bash test1.sh llama3-70b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.99 0.99
+    bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.99 0.99
 
-    bash test0.sh llama3-70b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993
+    bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993
 
-    bash test1.sh llama3-70b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993
+    bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993
 
-    bash test0.sh llama3-70b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993 0.993
+    bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993 0.993
 
-    bash test1.sh llama3-70b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993 0.993
+    bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993 0.993
 
     # echo ${press}
     # bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.0 0.755
@@ -71,9 +71,9 @@ for press in "${press_names[@]}";
 #   do
 #     bash evaluate.sh llama3-8b-inst 0 0.5 ${press} 0,1,2,3,2,3 0.0 0.0
 #     done
-# bash run1.sh 0,1,2,3 llama3-70b-inst full_kv 1 &
+# bash run1.sh 0,1,2,3 llama3-8b-inst full_kv 1 &
 # bash run1.sh 2,3 llama3-8b-inst full_kv 1 &
-# bash run2.sh 4,5 llama3-70b-inst snap_adathink 1 0.5 0 &
+# bash run2.sh 4,5 llama3-8b-inst snap_adathink 1 0.5 0 &
 # bash run2.sh 6,7 llama3-8b-inst snap_adathink 1 0.5 0 &
 wait
 # bash run1.sh 0 llama3-8b-inst full_kv 1 0.5 0

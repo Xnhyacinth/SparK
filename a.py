@@ -20,9 +20,8 @@ def extract_selected_channels(log_file_path):
     
     return selected_channels_list
 
-# 示例用法
 for l in ['128', '512', '1024', '2048']:
-  log_file_path = f'/modelopsnas/modelops/468440/kvpress/logs0/llama3-8b-inst/snap_adathink_{l}_1_channel0.5_t0.0_no0.0_0.995.log'  # 替换为你的 log 文件路径
+  log_file_path = f'logs0/llama3-8b-inst/snap_adathink_{l}_1_channel0.5_t0.0_no0.0_0.99.log' 
   result = extract_selected_channels(log_file_path)
 #   breakpoint()
   nums = 128 * int(l) * 8 * len(result)

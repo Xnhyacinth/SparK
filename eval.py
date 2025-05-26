@@ -18,7 +18,7 @@ from transformers import pipeline
 from zero_scrolls.calculate_metrics import calculate_metrics as zero_scrolls_scorer
 from longbench.evaluate import scorer
 import sys
-
+from utils import is_ampere_gpu
 from kvpress import (
     CriticalKVPress,
     CriticalAdaKVPress,
@@ -150,7 +150,7 @@ def evaluate(
     if compress_questions:
         df["context"] = df["context"] + df["question"]
         df["question"] = ""
-        save_dir = save_prefix / "results" / model.split('/')[-1] / "comress_questions" / str(temperature) / ratio / dataset / data_dir
+        save_dir = save_prefix / "results" / model.split('/')[-1] / "compress_questions" / str(temperature) / ratio / dataset / data_dir
        
         save_filename = save_dir / (
             press_name
@@ -225,13 +225,15 @@ def evaluate(
     model_kwargs = {"torch_dtype": "auto"}
     if isinstance(press, ObservedAttentionPress):
         model_kwargs["attn_implementation"] = "eager"
-    else:
+    elif is_ampere_gpu()[0]:
         try:
             import flash_attn  # noqa: F401
 
             model_kwargs["attn_implementation"] = "flash_attention_2"
         except ImportError:
             pass
+    else:
+        print(f"No Ampere GPU detected: {is_ampere_gpu()[1]}")
 
     if device == "auto":
         pipe = pipeline("kv-press-text-generation", model=model, device_map="auto", model_kwargs=model_kwargs)
@@ -243,13 +245,16 @@ def evaluate(
         pipe.tokenizer.bos_token = ""
         if data_dir in ["samsum"]:
             pipe.model.generation_config.eos_token_id = [pipe.tokenizer.eos_token_id, pipe.tokenizer.encode("\n", add_special_tokens=False)[-1]]
-
+    
+    print(pipe.model.dtype)
     # Run pipeline on each context
     df["predicted_answer"] = None
     ds = Dataset.from_pandas(df)
     # breakpoint()
     df_context = df.groupby("context")
     assert all(df_context["answer_prefix"].nunique() == 1)
+    # if 'qwen3' in model.split('/')[-1].lower():
+    #     max_new_tokens=1024
 
     predictions, answers = [], []
     for context, df_ in tqdm(df_context, total=df["context"].nunique()):
@@ -265,6 +270,7 @@ def evaluate(
             max_new_tokens=max_new_tokens_,
             max_context_length=max_context_length,
             temperature=temperature,
+            think='qwen3' not in model.split('/')[-1].lower()
         )
         df.loc[df_.index, "predicted_answer"] = output["answers"]
         df.loc[df_.index, "compression_ratio"] = press.compression_ratio

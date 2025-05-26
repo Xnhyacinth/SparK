@@ -42,6 +42,12 @@ fi
 if [ "$model" = "qwen3-8b" ];then
     model_name_or_path=Qwen/Qwen3-8B
 fi
+if [ "$model" = "qwen2.5-3b-inst" ];then
+    model_name_or_path=Qwen/Qwen2.5-3B-Instruct
+fi
+if [ "$model" = "qwen2.5-32b-inst" ];then
+    model_name_or_path=Qwen/Qwen2.5-32B-Instruct
+fi
 
 extra_args=""
 if [[ $compress_questions != 0 ]];then

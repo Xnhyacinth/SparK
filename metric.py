@@ -140,17 +140,17 @@ if __name__ == '__main__':
                         if args.pooling_ratio is not None:
                             # breakpoint()
                             prefix += f"__no{args.pooling_ratio}"
-                            # args.eval_file = os.path.join(args.results_dir, 'comress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}__channel{args.com_channel}.json")
+                            # args.eval_file = os.path.join(args.results_dir, 'compress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}__channel{args.com_channel}.json")
                         
                         # else:
-                        args.eval_file = os.path.join(args.results_dir, 'comress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}{prefix}__channel{args.com_channel}.json")
+                        args.eval_file = os.path.join(args.results_dir, 'compress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}{prefix}__channel{args.com_channel}.json")
                         # breakpoint()
                     elif 'think' in method:
-                        args.eval_file = os.path.join(args.results_dir, 'comress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}__channel{args.com_channel}.json")
+                        args.eval_file = os.path.join(args.results_dir, 'compress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}__channel{args.com_channel}.json")
                     elif 'full_kv' in method:
-                        args.eval_file = os.path.join(args.results_dir, 'comress_questions', args.tem, '0', 'longbench', dataset, f"{method}__max_context{max_context_length}.json")    
+                        args.eval_file = os.path.join("output/results/Meta-Llama-3-8B-Instruct", 'compress_questions', args.tem, '0', 'longbench', dataset, f"{method}__max_context{max_context_length}.json")    
                     else:
-                        args.eval_file = os.path.join(args.results_dir, 'comress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}.json")
+                        args.eval_file = os.path.join("output_norm/results/Meta-Llama-3-8B-Instruct", 'compress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}.json")
                 else:
                     if 'snap_adathink' in method:
                         # if args.pooling_ratio is not None:
@@ -163,7 +163,7 @@ if __name__ == '__main__':
                         if args.pooling_ratio is not None:
                             # breakpoint()
                             prefix += f"__no{args.pooling_ratio}"
-                            # args.eval_file = os.path.join(args.results_dir, 'comress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}__channel{args.com_channel}.json")
+                            # args.eval_file = os.path.join(args.results_dir, 'compress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}__channel{args.com_channel}.json")
                         
                         args.eval_file = os.path.join(args.results_dir, args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}{prefix}__channel{args.com_channel}.json")
                     elif 'think' in method:
@@ -231,12 +231,23 @@ if __name__ == '__main__':
                 results_list[idx+1].append(-1)
                 
                 print(f"dataset {args.dataset} method {args.method} scores {None}")
-                
+
+    # df['Average'] = df.iloc[:, 1:].mean(axis=1)  
+    for i in range(1, len(results_list)):
+        row_values = [val for val in results_list[i][1:] if isinstance(val, (int, float)) and val != -1] # Exclude header and -1 scores
+        if row_values:
+            average = round(sum(row_values) / len(row_values), 2)
+            results_list[i].append(average)
+        else:
+            results_list[i].append(0) # Or some other placeholder if all scores were -1 or no scores
+
+    # Add "Average" header for the new column
+    results_list[0].append("Average")
     import csv
     if args.compress_q is None:
         outpath = os.path.join(args.results_dir, args.tem, args.compress_ratio)
     else:
-        outpath = os.path.join(args.results_dir, 'comress_questions', args.tem, args.compress_ratio)
+        outpath = os.path.join(args.results_dir, 'compress_questions', args.tem, args.compress_ratio)
     os.makedirs(outpath, exist_ok=True)
     with open(os.path.join(outpath, f"results.csv"), 'w') as fp:
         writer = csv.writer(fp)

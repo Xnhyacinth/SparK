@@ -18,7 +18,7 @@ from transformers import pipeline
 from zero_scrolls.calculate_metrics import calculate_metrics as zero_scrolls_scorer
 from longbench.evaluate import scorer
 import sys
-
+from utils import is_ampere_gpu
 from kvpress import (
     CriticalKVPress,
     CriticalAdaKVPress,
@@ -43,7 +43,7 @@ DATASET_DICT = {
     "ruler": "simonjegou/ruler",
     "zero_scrolls": "simonjegou/zero_scrolls",
     "infinitebench": "MaxJeblick/InfiniteBench",
-    "longbench": "/modelopsnas/modelops/468440/program/kv/dataset/Xnhyacinth___long_bench"
+    "longbench": "Xnhyacinth/LongBench"
 }
 
 SCORER_DICT = {
@@ -150,7 +150,7 @@ def evaluate(
     if compress_questions:
         df["context"] = df["context"] + df["question"]
         df["question"] = ""
-        save_dir = save_prefix / "results" / model.split('/')[-1] / "comress_questions" / str(temperature) / ratio / dataset / data_dir
+        save_dir = save_prefix / "results" / model.split('/')[-1] / "compress_questions" / str(temperature) / ratio / dataset / data_dir
        
         save_filename = save_dir / (
             press_name
@@ -226,18 +226,22 @@ def evaluate(
     model_kwargs = {"torch_dtype": "auto"}
     if isinstance(press, ObservedAttentionPress):
         model_kwargs["attn_implementation"] = "eager"
-    else:
+    elif is_ampere_gpu()[0]:
         try:
             import flash_attn  # noqa: F401
 
             model_kwargs["attn_implementation"] = "flash_attention_2"
         except ImportError:
             pass
+    else:
+        print(f"No Ampere GPU detected: {is_ampere_gpu()[1]}")
 
     if device == "auto":
         pipe = pipeline("kv-press-text-generation", model=model, device_map="auto", model_kwargs=model_kwargs)
     else:
         pipe = pipeline("kv-press-text-generation", model=model, device=device, model_kwargs=model_kwargs)
+        
+    print(f'model dtype: {pipe.model.dtype}')
 
     if data_dir in ["trec", "triviaqa", "samsum", "lsht", "lcc", "repobench-p"]:
         pipe.tokenizer.chat_template = None
@@ -266,6 +270,7 @@ def evaluate(
             max_new_tokens=max_new_tokens_,
             max_context_length=max_context_length,
             temperature=temperature,
+            think='qwen3' not in model.split('/')[-1].lower(),
         )
         # df.loc[df_.index, "predicted_answer"] = output["answers"]
         # df.loc[df_.index, "compression_ratio"] = press.compression_ratio

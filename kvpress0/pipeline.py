@@ -36,6 +36,7 @@ class KVPressTextGenerationPipeline(Pipeline):
         max_new_tokens: int = 50,
         max_context_length: Optional[int] = None,
         temperature: float = 0.0,
+        think: bool = None,
         cache: Optional[Cache] = None,
         **kwargs,
     ):
@@ -81,6 +82,7 @@ class KVPressTextGenerationPipeline(Pipeline):
             "questions": questions,
             "answer_prefix": answer_prefix,
             "max_context_length": max_context_length,
+            "think": think
         }
         forward_kwargs = {"press": press, "max_new_tokens": max_new_tokens, "cache": cache, "temperature": temperature}
         return preprocess_kwargs, forward_kwargs, postprocess_kwargs
@@ -91,6 +93,7 @@ class KVPressTextGenerationPipeline(Pipeline):
         questions: list[str],
         answer_prefix: str,
         max_context_length: int,
+        think: bool = None
     ):
         """
         Apply the chat template to the triplet (context, questions, answer_prefix) and tokenize it.
@@ -109,9 +112,14 @@ class KVPressTextGenerationPipeline(Pipeline):
             question_suffix = "\n"  # to separate the question from the answer
         else:
             separator = "\n" + "#" * len(context)
-            context = self.tokenizer.apply_chat_template(
-                [{"role": "user", "content": context + separator}], add_generation_prompt=True, tokenize=False
-            )
+            if not think:
+                context = self.tokenizer.apply_chat_template(
+                    [{"role": "user", "content": context + separator}], add_generation_prompt=True, tokenize=False, enable_thinking=False
+                )
+            else:
+                context = self.tokenizer.apply_chat_template(
+                    [{"role": "user", "content": context + separator}], add_generation_prompt=True, tokenize=False
+                )
             context, question_suffix = context.split(separator)
 
         # Add question_suffix and answer prefix

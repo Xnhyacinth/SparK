@@ -42,6 +42,12 @@ fi
 if [ "$model" = "qwen3-8b" ];then
     model_name_or_path=Qwen/Qwen3-8B
 fi
+if [ "$model" = "qwen2.5-3b-inst" ];then
+    model_name_or_path=Qwen/Qwen2.5-3B-Instruct
+fi
+if [ "$model" = "qwen2.5-32b-inst" ];then
+    model_name_or_path=Qwen/Qwen2.5-32B-Instruct
+fi
 
 extra_args=""
 if [[ $compress_questions != 0 ]];then
@@ -79,7 +85,7 @@ for compression_ratio in "${compression_ratios[@]}"; do
       echo "Running press_name: $press on dataset ${data_dir} with compression_ratio: $compression_ratio on GPU cuda:$i"
       CUDA_VISIBLE_DEVICES=${gpus} python -u eval.py --dataset $dataset --data_dir $data_dir --model $model_name_or_path --press_name $press --max_capacity_prompt $compression_ratio --threshold_ratio ${threshold_ratio} --pooling_ratio ${pooling_ratio} --mode ${mode} --key_channel_compression_ratio ${key_channel_compression_ratio} --temperature ${temperature} --device "auto" --save_dir output_norm0 ${extra_args}
     done
-  ) > ${output_prefix}/${press}_${compression_ratio}_${compress_questions}_channel${key_channel_compression_ratio}_t${temperature}_${mode}${pooling_ratio}.log 2>&1 &
+  ) > ${output_prefix}/${press}_${compression_ratio}_${compress_questions}_channel${key_channel_compression_ratio}_t${temperature}_${mode}${pooling_ratio}.log 2>&1
 done
 
 
