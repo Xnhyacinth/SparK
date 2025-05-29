@@ -46,7 +46,7 @@ for press in "${press_names[@]}";
     # bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.993 
 
 
-    bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 4,5,6,7 0.0 0.992
+    bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 4,5,6,7 0.0 0.996
 
     bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1,2,3 0.0 0.992
 

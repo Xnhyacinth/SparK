@@ -2,11 +2,11 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct", token="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")
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct", token="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")
 
 # tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", token="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")
-# model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", token="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")
+# model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", token="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") yao
 
 # mistralai/Mistral-Small-3.1-24B-Instruct-2503  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
 

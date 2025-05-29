@@ -11,7 +11,7 @@ mode=${9:-"no"}
 # model="/modelopsnas/modelops/models/meta-llama/Meta-Llama-3.1-8B-Instruct"
 dataset_list="narrativeqa qasper multifieldqa_en hotpotqa 2wikimqa musique gov_report qmsum multi_news trec triviaqa samsum passage_count passage_retrieval_en lcc repobench-p"
 # compression_ratios=(0.1 0.25 0.5)
-compression_ratios=(128 512)
+compression_ratios=(128 512 1024 2048)
 
 # press_names=("expected_attention" "knorm" "streaming_llm" "snapkv" "snap_think" "adakv" "observed_attention")
 # press_names=("snapkv")

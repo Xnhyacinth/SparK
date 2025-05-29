@@ -170,8 +170,8 @@ class AdaThinKPress(BasePress):
 
 def dynamic_score_selection_norm(queries, keys, threshold_ratio=0, key_channel_compression_ratio=0, pooling_ratio=0):
     bsz, num_heads, seq_len, head_dim = keys.shape
-    queries_norm = torch.nn.functional.normalize(queries, dim=-1)
-    keys_norm = torch.nn.functional.normalize(keys, dim=-1)
+    # queries_norm = torch.nn.functional.normalize(queries, dim=-1)
+    # keys_norm = torch.nn.functional.normalize(keys, dim=-1)
     
     q_norm = torch.norm(queries, dim=-2, p=2).unsqueeze(-2)
     k_norm = torch.pow(keys, 2)
@@ -203,6 +203,8 @@ def dynamic_score_selection_norm(queries, keys, threshold_ratio=0, key_channel_c
             mask, topk_ratios, group_indicator = dynamic_group5(is_above_threshold, head_dim, keys, sorted_indices)
         elif threshold_ratio == 0.996:
             mask, topk_ratios, group_indicator = dynamic_group6(is_above_threshold, head_dim, keys, sorted_indices)
+        elif threshold_ratio == 0.997:
+            mask, topk_ratios, group_indicator = dynamic_group7(is_above_threshold, head_dim, keys, sorted_indices)
         else:
             mask = create_mask_by_threshold(sorted_indices, threshold_indices)
 
@@ -548,6 +550,36 @@ def dynamic_group6(is_above_threshold, head_dim, keys, sorted_indices):
 
     total_mask = torch.zeros_like(keys, dtype=torch.bool)
     topk_ratios = [0.2, 0.25, 0.3, 0.35, 0.4, 0.5]
+    for group_id, ratio in zip(list(range(len(topk_ratios))), topk_ratios):
+        group_mask = (group_indicator == group_id)
+        
+        if not group_mask.any():
+            continue
+        
+        keep_channels = int(ratio * head_dim)
+        
+        top_indices = sorted_indices[..., :keep_channels]
+        group_topk_mask = torch.zeros_like(keys, dtype=torch.bool).scatter_(-1, top_indices, True) 
+        group_mask_expanded = group_mask.unsqueeze(-1).expand_as(total_mask)
+        
+        sub_mask = group_mask_expanded & group_topk_mask
+        
+        total_mask |= sub_mask
+    return total_mask, topk_ratios, group_indicator
+
+def dynamic_group7(is_above_threshold, head_dim, keys, sorted_indices):
+    bsz, num_heads, seq_len, head_dim = keys.shape
+    first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
+    group_indicator = torch.zeros_like(first_above_threshold_idx)
+
+    group_indicator[first_above_threshold_idx <= int(0.3 * head_dim)] = 0
+    group_indicator[(first_above_threshold_idx > int(0.3 * head_dim)) & (first_above_threshold_idx <= int(0.4 * head_dim))] = 1
+    group_indicator[(first_above_threshold_idx > int(0.4 * head_dim)) & (first_above_threshold_idx <= int(0.5 * head_dim))] = 2
+    group_indicator[(first_above_threshold_idx > int(0.5 * head_dim)) & (first_above_threshold_idx <= int(0.7 * head_dim))] = 3
+    group_indicator[first_above_threshold_idx > int(0.7 * head_dim)] = 4
+
+    total_mask = torch.zeros_like(keys, dtype=torch.bool)
+    topk_ratios = [0.3, 0.35, 0.4, 0.45, 0.5]
     for group_id, ratio in zip(list(range(len(topk_ratios))), topk_ratios):
         group_mask = (group_indicator == group_id)
         
