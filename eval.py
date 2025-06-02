@@ -33,7 +33,10 @@ from kvpress import (
     TOVAPress,
     DuoAttentionPress,
     ComposedPress,
-    AdaThinKPress
+    AdaThinKPress,
+    QFilterPress,
+    PyramidKVPress,
+    FinchPress,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +77,8 @@ PRESS_DICT = {
     "snap_think": ComposedPress([SnapKVPress(), ThinKPress()]),
     "full_kv": ExpectedAttentionPress(0.0),
     "snap_adathink": ComposedPress([SnapKVPress(), AdaThinKPress()]),
+    "pyramidkv": PyramidKVPress(),
+    "finch": FinchPress(),
 }
 
 

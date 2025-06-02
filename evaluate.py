@@ -33,6 +33,9 @@ from kvpress import (
     StreamingLLMPress,
     ThinKPress,
     TOVAPress,
+    QFilterPress,
+    PyramidKVPress,
+    FinchPress,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,6 +78,8 @@ PRESS_DICT = {
     "chunkkv": ChunkKVPress(press=SnapKVPress(), chunk_length=20),
     "snap_think": ComposedPress([SnapKVPress(), ThinKPress()]),
     "full_kv": ExpectedAttentionPress(0.0),
+    "pyramidkv": PyramidKVPress(),
+    "finch": FinchPress(),
 }
 
 

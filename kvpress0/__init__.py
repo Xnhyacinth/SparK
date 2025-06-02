@@ -23,6 +23,9 @@ from kvpress.presses.think_press import ThinKPress
 from kvpress.presses.tova_press import TOVAPress
 from kvpress.presses.criticalkv_press import CriticalKVPress, CriticalAdaKVPress
 from kvpress.presses.duo_attention_press import DuoAttentionPress
+from kvpress.presses.qfilter_press import QFilterPress
+from kvpress.presses.finch_press import FinchPress
+from kvpress.presses.pyramidkv_press import PyramidKVPress
 from kvpress0.presses.adathink_press import AdaThinKPress
 
 # Patch the attention functions to support head-wise compression
