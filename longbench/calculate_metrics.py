@@ -137,7 +137,6 @@ def code_sim_score(prediction, ground_truth, **kwargs):
         if ('`' not in line) and ('#' not in line) and ('//' not in line):
             prediction = line
             break
-    breakpoint()
     return (fuzz.ratio(prediction, ground_truth) / 100)
 
 def classification_score(prediction, ground_truth, **kwargs):

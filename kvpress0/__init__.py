@@ -54,4 +54,7 @@ __all__ = [
     "DuoAttentionPress",
     "AdaThinKPress",
     "ChunkKVPress",
+    "PyramidKVPress",
+    "QFilterPress",
+    "FinchPress",
 ]

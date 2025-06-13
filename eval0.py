@@ -147,7 +147,7 @@ def evaluate(
     
     # Load dataframe
     # df = load_dataset(DATASET_DICT[dataset], data_dir=data_dir, split="test").to_pandas()
-    df = load_dataset(DATASET_DICT[dataset], data_dir=data_dir, split="test").to_pandas()
+    df = load_dataset(DATASET_DICT[dataset], data_dir, split="test").to_pandas()
     # ds = load_dataset("Xnhyacinth/LongBench", data_dir, split="test", cache_dir=DATASET_DICT[dataset])
     # ds = Dataset.from_pandas(df)
     # breakpoint()
@@ -277,8 +277,8 @@ def evaluate(
             temperature=temperature,
             think='qwen3' not in model.split('/')[-1].lower(),
         )
-        # df.loc[df_.index, "predicted_answer"] = output["answers"]
-        # df.loc[df_.index, "compression_ratio"] = press.compression_ratio
+        df.loc[df_.index, "predicted_answer"] = output["answers"]
+        df.loc[df_.index, "compression_ratio"] = press.compression_ratio
         predictions.append(output["answer"])
         # # golds = [arr.tolist() for arr in d["answers"].to_list()]
         answers.append(d["answers"])
@@ -300,10 +300,10 @@ def evaluate(
         # breakpoint()
     # Calculate metrics
     scorer = SCORER_DICT[dataset]
-    if dataset == "longbench":
-        metrics = scorer(data_dir, predictions, answers, ds[0]["all_classes"])
-    else:
-        metrics = scorer(df)
+    # if dataset == "longbench":
+    #     metrics = scorer(data_dir, predictions, answers, ds[0]["all_classes"])
+    # else:
+    metrics = scorer(df)
     
     # df = df.rename(columns={"predicted_answer": "pred"})
     # df = df[['pred', 'answers', 'all_classes', 'length']]

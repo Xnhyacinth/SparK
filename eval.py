@@ -17,6 +17,7 @@ from tqdm import tqdm
 from transformers import pipeline
 from zero_scrolls.calculate_metrics import calculate_metrics as zero_scrolls_scorer
 from longbench.evaluate import scorer
+from longbench.calculate_metrics import calculate_metrics as longbench_scorer
 import sys
 from utils import is_ampere_gpu
 from kvpress import (
@@ -54,7 +55,7 @@ SCORER_DICT = {
     "ruler": ruler_scorer,
     "zero_scrolls": zero_scrolls_scorer,
     "infinitebench": infinite_bench_scorer,
-    "longbench": scorer
+    "longbench": longbench_scorer
 }
 
 PRESS_DICT = {
@@ -79,6 +80,8 @@ PRESS_DICT = {
     "snap_adathink": ComposedPress([SnapKVPress(), AdaThinKPress()]),
     "pyramidkv": PyramidKVPress(),
     "finch": FinchPress(),
+    "pyramid_adathink": ComposedPress([PyramidKVPress(), AdaThinKPress()]),
+    "pyramid_think": ComposedPress([PyramidKVPress(), ThinKPress()]),
 }
 
 
@@ -147,7 +150,8 @@ def evaluate(
     
     # Load dataframe
     # df = load_dataset(DATASET_DICT[dataset], data_dir=data_dir, split="test").to_pandas()
-    df = load_dataset(DATASET_DICT[dataset], data_dir=data_dir, split="test").to_pandas()
+    # breakpoint()
+    df = load_dataset(DATASET_DICT[dataset], data_dir, split="test").to_pandas()
     # ds = load_dataset("Xnhyacinth/LongBench", data_dir, split="test", cache_dir=DATASET_DICT[dataset])
     # ds = Dataset.from_pandas(df)
     # breakpoint()
@@ -164,9 +168,11 @@ def evaluate(
         # save_filename = save_filename.with_name(save_filename.stem + "__compressed_questions" + save_filename.suffix)
 
     os.makedirs(str(save_dir), exist_ok=True)
-    if save_filename.exists():
-        logger.warning(f"Results already exist at {save_filename}")
-        os.remove(save_filename)
+    # if save_filename.exists():
+    #     logger.warning(f"Results already exist at {save_filename}")
+        # os.remove(save_filename)
+        # print(f"{save_filename} exist! exit!")
+        # sys.exit()  # 退出程序
         
     if fraction < 1.0:
         df = df.sample(frac=fraction, random_state=42)
@@ -235,11 +241,16 @@ def evaluate(
             import flash_attn  # noqa: F401
 
             model_kwargs["attn_implementation"] = "flash_attention_2"
+            print("Using flash attention 2")
         except ImportError:
             pass
     else:
+        from patch import replace_llama_attn_with_xformers_attn
+        replace_llama_attn_with_xformers_attn()
+        model_kwargs = {"torch_dtype": torch.float16}
         print(f"No Ampere GPU detected: {is_ampere_gpu()[1]}")
-
+        print("Using xformers attention")
+        
     if device == "auto":
         pipe = pipeline("kv-press-text-generation", model=model, device_map="auto", model_kwargs=model_kwargs)
     else:
@@ -264,7 +275,7 @@ def evaluate(
     predictions, answers = [], []
     for context, df_ in tqdm(df_context, total=df["context"].nunique()):
         questions = df_["question"].to_list()
-        lengths = df_["length"].to_list()
+        # lengths = df_["length"].to_list()
         max_new_tokens_ = max_new_tokens if max_new_tokens is not None else df_["max_new_tokens"].iloc[0]
         answer_prefix = df_["answer_prefix"].iloc[0]
         output = pipe(
@@ -280,8 +291,8 @@ def evaluate(
         df.loc[df_.index, "predicted_answer"] = output["answers"]
         df.loc[df_.index, "compression_ratio"] = press.compression_ratio
         predictions.extend(output["answers"])
-        golds = [arr.tolist() for arr in df_["answers"].to_list()]
-        answers.extend(golds)
+        # golds = [arr.tolist() for arr in df_["answers"].to_list()]
+        # answers.extend(golds)
         torch.cuda.empty_cache()
         
         # breakpoint()
@@ -292,13 +303,16 @@ def evaluate(
         # breakpoint()
     # Calculate metrics
     scorer = SCORER_DICT[dataset]
-    if dataset == "longbench":
-        metrics = scorer(data_dir, predictions, answers, ds[0]["all_classes"])
-    else:
-        metrics = scorer(df)
+    # if dataset == "longbench":
+    #     metrics = scorer(data_dir, predictions, answers, ds[0]["all_classes"])
+    # else:
+    metrics = scorer(df)
     
     df = df.rename(columns={"predicted_answer": "pred"})
-    df = df[['pred', 'answers', 'all_classes', 'length']]
+    if dataset == "longbench":
+        df = df[['pred', 'answers', 'all_classes', 'length']]
+    else:
+        df = df[['pred', 'answer']]
     # 将 DataFrame 转换为 JSONL 文件
     with open(save_filename, 'w', encoding='utf-8') as f:
         for _, row in df.iterrows():

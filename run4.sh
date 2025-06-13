@@ -3,47 +3,17 @@
 # bash install.sh
 # bash evaluate.sh llama3-8b-inst 1
 # bash run1.sh 4,5,6,7 llama3-8b-inst full_kv 1 0.0
-press_names=("pyramidkv")
+press_names=("pyramid_adathink" "pyramid_think")
+compression_ratios=(0.5 0.6 0.7 0.8 0.9 0.4 0.3)
 # press_names=("snap_think" "snap_adathink")
 # press_names=("snap_adathink")
 # for press in $press_names
-for press in "${press_names[@]}"; 
-  do
-    bash evaluate1.sh llama3-8b-inst 1 0.5 ${press} 4,5,6,7 0.0 0.0
-    # bash evaluate.sh qwen3-32b 1 0.5 ${press} 0,1 0.0 0.0
-    # bash evaluate0.sh llama3-70b-inst 1 0.5 ${press} 0,1,2,3 0.0 0.0
-    # bash evaluate.sh llama3-70b-inst 1 0.5 ${press} 0,1,2,3 0.0 0.0
-    # bash evaluate0.sh qwen3-32b 1 0.5 snap_think 0,1 0.0 0.0
-    # bash evaluate.sh llama3-8b-inst 1 0.5 ${press} 0,1 0.0 0.0
-    # bash evaluate.sh llama3-8b-inst 1 0.6 ${press} 0,1 0.0 0.0
-    # bash evaluate.sh llama3-8b-inst 1 0.4 ${press} 0,1 0.0 0.0
-    # bash evaluate.sh llama3-8b-inst 1 0.7 ${press} 0,1 0.0 0.0
-    # bash evaluate.sh llama3-8b-inst 1 0.8 ${press} 0,1 0.0 0.0
-    # bash evaluate.sh llama3-8b-inst 1 0.9 ${press} 0,1 0.0 0.0
-    # bash evaluate.sh llama3-8b-inst 1 0.3 ${press} 0,1 0.0 0.0
-    # bash evaluate.sh llama3-8b-inst 1 0.2 ${press} 0,1 0.0 0.0
-    # bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test0.sh llama3-8b-inst 1 0.6 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test0.sh llama3-8b-inst 1 0.4 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test0.sh llama3-8b-inst 1 0.3 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test0.sh llama3-8b-inst 1 0.7 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test0.sh llama3-8b-inst 1 0.8 snap_adathink 0,1 0.0 0.0 0.7554
-
-    # bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test1.sh llama3-8b-inst 1 0.6 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test1.sh llama3-8b-inst 1 0.4 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test1.sh llama3-8b-inst 1 0.3 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test1.sh llama3-8b-inst 1 0.7 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test1.sh llama3-8b-inst 1 0.8 snap_adathink 0,1 0.0 0.0 0.7554
-    # bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 0,1 0.0 0.994 
-
-    # bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1 0.0 0.994 
-
-    # bash test0.sh llama3-8b-inst 1 0.5 snap_adathink 0,1 0.0 0.995 
-
-    # bash test1.sh llama3-8b-inst 1 0.5 snap_adathink 0,1 0.0 0.995 
-    # echo ${press}
+for ratio in "${compression_ratios[@]}"; do
+    for press in "${press_names[@]}"; do
+      echo "Running evaluation for press: ${press} with ratio: ${ratio}"
+      bash evaluate1.sh llama3-8b-inst 1 ${ratio} ${press} 2,3 0.0 0.0
     done
+done
 # bash eval.sh llama3-8b-inst 1
 # dataset_list="narrativeqa qasper multifieldqa_en hotpotqa 2wikimqa musique gov_report qmsum multi_news trec triviaqa samsum passage_count passage_retrieval_en lcc repobench-p"
 

@@ -3,13 +3,13 @@
 # bash install.sh
 # bash evaluate.sh llama3-8b-inst 1
 # bash run1.sh 4,5,6,7 llama3-8b-inst full_kv 1 0.0
-press_names=("snapkv" "streaming_llm" "tova" "observed_attention" "expected_attention" "adasnapkv")
+press_names=("snapkv" "pyramidkv" "streaming_llm" "tova" "observed_attention" "expected_attention")
 # press_names=("snap_think" "snap_adathink")
 # press_names=("snap_adathink")
 # for press in $press_names
 for press in "${press_names[@]}"; 
   do
-    bash evaluate1.sh llama3-8b-inst 1 0.5 ${press} 0,1,2,3 0.0 0.0
+    bash evaluate1.sh llama3-8b-inst 1 0.5 ${press} 0,1 0.0 0.0
     # bash evaluate.sh qwen3-32b 1 0.5 ${press} 0,1 0.0 0.0
     # bash evaluate0.sh llama3-70b-inst 1 0.5 ${press} 0,1,2,3 0.0 0.0
     # bash evaluate.sh llama3-70b-inst 1 0.5 ${press} 0,1,2,3 0.0 0.0
