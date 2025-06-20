@@ -14,12 +14,12 @@ bash insatll.sh
 press_names=("snapkv" "pyramidkv" "streaming_llm" "tova" "observed_attention" "expected_attention")
 
 
-model=${1:-"llama3.1-8b-inst"}
-compress_questions=${2:-"0"}
+model=${1:-"llama3.1-8b-inst"} # model name
+compress_questions=${2:-"0"} # compress questions default 1
 key_channel_compression_ratio=${3:-"0.5"}
-press=${4:-"snapkv"}
-gpus=${5:-"0"}
-temperature=${6:-"0.0"}
+press=${4:-"snapkv"} # compress methods
+gpus=${5:-"0"} # gpus
+temperature=${6:-"0.0"} 
 threshold_ratio=${7:-"0.0"}
 pooling_ratio=${8:-"0.0"}
 
