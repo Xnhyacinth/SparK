@@ -30,4 +30,6 @@ bash run2.sh # adathink recover with avg
 bash run4.sh # all baselines with think and adathink
 ```
 
-The specific parameters can be found in the method's implementation in `kvpress0/presses/adathink_press.py`
+The specific parameters can be found in the method's implementation in [adathink_press](kvpress0/presses/adathink_press.py).
+
+For more methods (press), see `PRESS_DICT` in [eval.py](eval.py).
