@@ -12,7 +12,7 @@ for com in "${coms[@]}"
     do
     echo ${com}
     echo ${ratio}
-    # python metric.py --results_dir /modelopsnas/modelops/468440/kvpress/output000_0.0_${xxx}/results/Meta-Llama-3-8B-Instruct --compress_ratio ${ratio} --compress_q com --tem 0.0 --com_channel ${com} --threshold_ratio ${xxx} #--pooling_ratio ${xxx}
+    # python metric.py --results_dir output000_0.0_${xxx}/results/Meta-Llama-3-8B-Instruct --compress_ratio ${ratio} --compress_q com --tem 0.0 --com_channel ${com} --threshold_ratio ${xxx} #--pooling_ratio ${xxx}
     python metric.py --results_dir output000_0.0_0.992/results/Meta-Llama-3-8B-Instruct --compress_ratio ${ratio} --compress_q com --tem 0.0 --com_channel ${com} --threshold_ratio ${xxx} #--pooling_ratio ${xxx}
     done 
   done
