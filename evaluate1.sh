@@ -71,6 +71,16 @@ for compression_ratio in "${compression_ratios[@]}"; do
   (
     for data_dir in $dataset_list; do
       echo "Running press_name: $press on dataset ${data_dir} with compression_ratio: $compression_ratio on GPU cuda:$i"
+      log_file="output_norm/results/Llama-3.1-8B-Instruct/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500.json"
+      if [ -f "$log_file" ]; then
+        echo "Log file $log_file already exists, skipping."
+        continue
+      fi
+      log_file="output_norm/results/Llama-3.1-8B-Instruct/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500__channel${key_channel_compression_ratio}.json"
+      if [ -f "$log_file" ]; then
+        echo "Log file $log_file already exists, skipping."
+        continue
+      fi
       CUDA_VISIBLE_DEVICES=${gpus} python -u eval.py --dataset $dataset --data_dir $data_dir --model $model_name_or_path --press_name $press --max_capacity_prompt $compression_ratio --threshold_ratio ${threshold_ratio} --pooling_ratio ${pooling_ratio} --mode ${mode} --key_channel_compression_ratio ${key_channel_compression_ratio} --temperature ${temperature} --device "auto" --save_dir output_norm ${extra_args}
     done
   ) > ${output_prefix}/${press}_${compression_ratio}_${compress_questions}_channel${key_channel_compression_ratio}_t${temperature}_${mode}${pooling_ratio}.log 2>&1

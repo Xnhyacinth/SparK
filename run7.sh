@@ -3,8 +3,8 @@ press_names=("snap_adathink")
 for press in "${press_names[@]}"; 
   do
 
-    bash test0.sh llama3.1-8b-inst 1 0.5 ${press} 2,3 0.0 0.0 0.65 no ruler
-    bash test0.sh llama3.1-8b-inst 1 0.6 ${press} 2,3 0.0 0.0 0.65 no ruler
+    # bash test0.sh llama3.1-8b-inst 1 0.5 ${press} 2,3 0.0 0.0 0.65 no ruler
+    # bash test0.sh llama3.1-8b-inst 1 0.6 ${press} 2,3 0.0 0.0 0.65 no ruler
     bash test0.sh llama3.1-8b-inst 1 0.4 ${press} 2,3 0.0 0.0 0.65 no ruler
     bash test0.sh llama3.1-8b-inst 1 0.7 ${press} 2,3 0.0 0.0 0.65 no ruler
     bash test0.sh llama3.1-8b-inst 1 0.8 ${press} 2,3 0.0 0.0 0.65 no ruler

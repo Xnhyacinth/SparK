@@ -2,8 +2,9 @@
 # pip install transformers==4.51.0
 # bash install.sh
 # bash evaluate.sh llama3-8b-inst 1
-bash run1.sh 4,5 llama3.1-8b-inst full_kv 1 0.0 ruler
+# bash run1.sh 4,5 llama3.1-8b-inst full_kv 1 0.0 ruler
 press_names=("snapkv" "pyramidkv" "streaming_llm" "tova" "observed_attention" "expected_attention")
+press_names=("streaming_llm" "tova" "observed_attention" "expected_attention")
 # press_names=("snap_think" "snap_adathink")
 # press_names=("snap_adathink")
 # for press in $press_names
