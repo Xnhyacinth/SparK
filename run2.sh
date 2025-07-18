@@ -4,7 +4,7 @@
 # bash evaluate.sh llama3-8b-inst 1
 # bash run1.sh 4,5,6,7 llama3-8b-inst full_kv 1 0.0
 press_names=("pyramid_adathink")
-compression_ratios=(0.5 0.6 0.7 0.8 0.9 0.4 0.3)
+compression_ratios=(0.5 0.8 0.6 0.7 0.9 0.4 0.3)
 # press_names=("snap_think" "snap_adathink")
 # press_names=("snap_adathink")
 # for press in $press_names

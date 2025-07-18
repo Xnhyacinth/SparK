@@ -1,7 +1,7 @@
 import pandas as pd
 
 # 读取 CSV 文件
-df = pd.read_csv('output_norm1/results/Meta-Llama-3-8B-Instruct/comress_questions/0.0/128/results.csv')  # 替换为你的 CSV 文件路径
+df = pd.read_csv('/mnt/bn/bytenn-lq2/lhx/Adathink/output_norm/results/Meta-Llama-3-8B-Instruct/compress_questions/0.0/128/results.csv')  # 替换为你的 CSV 文件路径
 df['Average'] = df.iloc[:, 1:].mean(axis=1)
 # 打印整个内容
 print(df)

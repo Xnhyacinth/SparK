@@ -61,6 +61,7 @@ if [[ $compress_questions != 0 ]];then
   extra_args="${extra_args} --compress_questions True"
 fi
 
+model_basename=$(basename "$model_name_or_path")
 output_prefix=logs0/${model}/${dataset}
 mkdir -p ${output_prefix}
 # Iterate over press names and compression ratios
@@ -82,12 +83,12 @@ for compression_ratio in "${compression_ratios[@]}"; do
   (
     for data_dir in $dataset_list; do
       echo "Running press_name: $press on dataset ${data_dir} with compression_ratio: $compression_ratio on GPU cuda:$i"
-      log_file="output000_${pooling_ratio}_${threshold_ratio}/results/Llama-3.1-8B-Instruct/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500__no${pooling_ratio}__channel${key_channel_compression_ratio}.json"
+      log_file="output000_${pooling_ratio}_${threshold_ratio}/results/${model_basename}/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500__no${pooling_ratio}__channel${key_channel_compression_ratio}.json"
       if [ -f "$log_file" ]; then
         echo "Log file $log_file already exists, skipping."
         continue
       fi
-      log_file="output000_${pooling_ratio}_${threshold_ratio}/results/Llama-3.1-8B-Instruct/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500__threshold${threshold_ratio}__channel${key_channel_compression_ratio}.json"
+      log_file="output000_${pooling_ratio}_${threshold_ratio}/results/${model_basename}/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500__threshold${threshold_ratio}__channel${key_channel_compression_ratio}.json"
       if [ -f "$log_file" ]; then
         echo "Log file $log_file already exists, skipping."
         continue

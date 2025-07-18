@@ -9,7 +9,8 @@ press_names=("snapkv" "pyramidkv" "streaming_llm" "tova" "observed_attention" "e
 # for press in $press_names
 for press in "${press_names[@]}"; 
   do
-    bash evaluate1.sh llama3-8b-inst 1 0.5 ${press} 0,1 0.0 0.0
+    # bash evaluate1.sh llama3-8b-inst 1 0.5 ${press} 0,1 0.0 0.0
+    bash evaluate1.sh llama3.1-8b-inst 1 0.5 ${press} 0,1 0.0 0.0
     # bash evaluate.sh qwen3-32b 1 0.5 ${press} 0,1 0.0 0.0
     # bash evaluate0.sh llama3-70b-inst 1 0.5 ${press} 0,1,2,3 0.0 0.0
     # bash evaluate.sh llama3-70b-inst 1 0.5 ${press} 0,1,2,3 0.0 0.0

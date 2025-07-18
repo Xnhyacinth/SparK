@@ -57,6 +57,7 @@ if [ "$model" = "qwen2.5-32b-inst" ];then
     model_name_or_path=Qwen/Qwen2.5-32B-Instruct
 fi
 
+model_basename=$(basename "$model_name_or_path")
 
 extra_args=""
 if [[ $compress_questions != 0 ]];then
@@ -71,12 +72,12 @@ for compression_ratio in "${compression_ratios[@]}"; do
   (
     for data_dir in $dataset_list; do
       echo "Running press_name: $press on dataset ${data_dir} with compression_ratio: $compression_ratio on GPU cuda:$i"
-      log_file="output_norm/results/Llama-3.1-8B-Instruct/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500.json"
+      log_file="output_norm/results/${model_basename}/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500.json"
       if [ -f "$log_file" ]; then
         echo "Log file $log_file already exists, skipping."
         continue
       fi
-      log_file="output_norm/results/Llama-3.1-8B-Instruct/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500__channel${key_channel_compression_ratio}.json"
+      log_file="output_norm/results/${model_basename}/compress_questions/0.0/${compression_ratio}/${dataset}/${data_dir}/${press}__max_context127500__channel${key_channel_compression_ratio}.json"
       if [ -f "$log_file" ]; then
         echo "Log file $log_file already exists, skipping."
         continue
