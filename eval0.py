@@ -247,6 +247,10 @@ def evaluate(
         pipe = pipeline("kv-press-text-generation", model=model, device=device, model_kwargs=model_kwargs)
         
     print(f'model dtype: {pipe.model.dtype}')
+    if pipe.model.dtype not in [torch.float16, torch.bfloat16]:
+        target_dtype = model_kwargs["torch_dtype"]
+        print(f"Converting model from {pipe.model.dtype} to {target_dtype}")
+        pipe.model = pipe.model.to(dtype=target_dtype)
 
     if data_dir in ["trec", "triviaqa", "samsum", "lsht", "lcc", "repobench-p"]:
         pipe.tokenizer.chat_template = None

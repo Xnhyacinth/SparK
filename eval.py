@@ -263,6 +263,10 @@ def evaluate(
             pipe.model.generation_config.eos_token_id = [pipe.tokenizer.eos_token_id, pipe.tokenizer.encode("\n", add_special_tokens=False)[-1]]
     
     print(pipe.model.dtype)
+    if pipe.model.dtype not in [torch.float16, torch.bfloat16]:
+        target_dtype = model_kwargs["torch_dtype"]
+        print(f"Converting model from {pipe.model.dtype} to {target_dtype}")
+        pipe.model = pipe.model.to(dtype=target_dtype)
     # Run pipeline on each context
     df["predicted_answer"] = None
     ds = Dataset.from_pandas(df)
