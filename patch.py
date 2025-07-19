@@ -2,7 +2,7 @@
 import logging
 import math
 from typing import Optional, Tuple
-
+import sys
 import torch
 import transformers.models.llama.modeling_llama
 from transformers.models.llama.modeling_llama import apply_rotary_pos_emb, repeat_kv
@@ -13,6 +13,7 @@ try:
     import xformers.ops
 except ImportError:
     logging.error("xformers not found! Please install it before trying to use it.")
+    sys.exit(1)
 
 
 def replace_llama_attn_with_xformers_attn():

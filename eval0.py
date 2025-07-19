@@ -18,7 +18,7 @@ from transformers import pipeline
 from zero_scrolls.calculate_metrics import calculate_metrics as zero_scrolls_scorer
 from longbench.evaluate import scorer
 import sys
-from utils import is_ampere_gpu
+from utils import supports_flash_attention
 from kvpress import (
     CriticalKVPress,
     CriticalAdaKVPress,
@@ -231,7 +231,7 @@ def evaluate(
     model_kwargs = {"torch_dtype": "auto"}
     if isinstance(press, ObservedAttentionPress):
         model_kwargs["attn_implementation"] = "eager"
-    elif is_ampere_gpu()[0]:
+    elif supports_flash_attention()[0]:
         try:
             import flash_attn  # noqa: F401
 
@@ -239,7 +239,7 @@ def evaluate(
         except ImportError:
             pass
     else:
-        print(f"No Ampere GPU detected: {is_ampere_gpu()[1]}")
+        print(f"No Ampere GPU detected: {supports_flash_attention()[1]}")
 
     if device == "auto":
         pipe = pipeline("kv-press-text-generation", model=model, device_map="auto", model_kwargs=model_kwargs)
