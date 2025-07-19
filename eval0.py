@@ -228,7 +228,7 @@ def evaluate(
         sys.exit()  # 退出程序
 
     # Initialize pipeline with the correct attention implementation
-    model_kwargs = {"torch_dtype": "auto"}
+    model_kwargs = {"torch_dtype": torch.bfloat16}
     if isinstance(press, ObservedAttentionPress):
         model_kwargs["attn_implementation"] = "eager"
     elif supports_flash_attention()[0]:
