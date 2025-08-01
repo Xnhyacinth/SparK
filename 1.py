@@ -28,3 +28,5 @@ for index, row in df.iterrows():
 # chunk_outputs = [pool(chunk) for chunk in chunks]  # 对每个 chunk 池化
 # output1 = torch.cat(chunk_outputs, dim=1)
 # breakpoint()
+
+

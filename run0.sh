@@ -1,16 +1,4 @@
 
-if [ ! -d "/modelopsnas" ]; then
-    mkdir -p "/modelopsnas"
-    echo "/modelopsnas created"
-fi
-
-nas="alipayheyuan2-33-fdf14.cn-heyuan-alipay.nas.aliyuncs.com" #10T
-sudo mount -t nfs -o vers=3,nolock,proto=tcp,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport $nas:/ /modelopsnas
-#pip install transformers==4.37.0
-
-#model_path=/codenas/user/bingchang/checkpoints/merged/qwen-1.8b-quality-classifier-v1-0118-55000/
-# model_path=/ainative/modelops/246872/models/Qwen2-7B-Instruct
-
 #######################################################################
 #            
 #                         Group 1

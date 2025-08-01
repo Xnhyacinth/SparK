@@ -4,10 +4,13 @@ pip install fire
 pip install nltk
 pip install bert_score
 pip install rouge
-pip install -U transformers
+pip install transformers==4.52.3
 pip uninstall tensorflow -y
 pip install kvpress --quiet
 pip install scikit-learn==1.5.1
 pip install datasets==2.21.0
 pip install jieba
 pip install fuzzywuzzy
+
+
+bash install.sh

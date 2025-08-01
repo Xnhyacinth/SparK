@@ -93,6 +93,7 @@ def evaluate(
     press_name: str = "expected_attention",
     compression_ratio: float = 0.1,
     key_channel_compression_ratio: float = 0.0,
+    value_channel_compression_ratio: float = 0.0,
     fraction: float = 1.0,
     max_new_tokens: Optional[int] = None,
     max_context_length: Optional[int] = None,
@@ -172,7 +173,7 @@ def evaluate(
     #     logger.warning(f"Results already exist at {save_filename}")
         # os.remove(save_filename)
         # print(f"{save_filename} exist! exit!")
-        # sys.exit()  # 退出程序
+        # sys.exit() 
         
     if fraction < 1.0:
         df = df.sample(frac=fraction, random_state=42)
@@ -189,6 +190,8 @@ def evaluate(
     # Load press
     assert press_name in PRESS_DICT
     press = PRESS_DICT[press_name]
+
+    print(f'max_capacity_prompt: {max_capacity_prompt}, compression_ratio: {compression_ratio}, key_channel_compression_ratio: {key_channel_compression_ratio}, value_channel_compression_ratio: {value_channel_compression_ratio}, threshold_ratio: {threshold_ratio}, pooling_ratio: {pooling_ratio}')
 
     if isinstance(press, (DuoAttentionPress)):
         press.head_compression_ratio = compression_ratio
@@ -211,12 +214,19 @@ def evaluate(
                     save_filename = save_filename.with_name(
                         save_filename.stem + f"__{mode}{pooling_ratio}" + save_filename.suffix
                     )
+
                 # else:
                 ps.key_channel_compression_ratio = key_channel_compression_ratio
                 ps.outpath = save_dir
                 save_filename = save_filename.with_name(
                     save_filename.stem + f"__channel{key_channel_compression_ratio}" + save_filename.suffix
                 )
+
+                if value_channel_compression_ratio != 0:
+                    ps.value_channel_compression_ratio = value_channel_compression_ratio
+                    save_filename = save_filename.with_name(
+                        save_filename.stem + f"__value{value_channel_compression_ratio}" + save_filename.suffix
+                    )
                 
             else:
                 ps.compression_ratio = compression_ratio
@@ -230,7 +240,7 @@ def evaluate(
 
     if os.path.exists(save_filename): 
         print(f"{save_filename} exist! exit!")
-        sys.exit()  # 退出程序
+        sys.exit() 
 
     # Initialize pipeline with the correct attention implementation
     model_kwargs = {"torch_dtype": torch.bfloat16}
@@ -317,10 +327,9 @@ def evaluate(
         df = df[['pred', 'answers', 'all_classes', 'length']]
     else:
         df = df[['pred', 'answer']]
-    # 将 DataFrame 转换为 JSONL 文件
     with open(save_filename, 'w', encoding='utf-8') as f:
         for _, row in df.iterrows():
-            json_obj = row.to_dict()  # 转换为字典格式
+            json_obj = row.to_dict() 
             for k, v in json_obj.items():
                 # breakpoint()
                 json_obj[k] = v.tolist() if isinstance(v, ndarray) else v
@@ -330,7 +339,7 @@ def evaluate(
     #         json.dump({"pred": pred, "answers": answer, "all_classes": df_["all_classes"].iloc[0].tolist() if df_["all_classes"].iloc[0] is not None else df_["all_classes"].iloc[0], "length": length}, f, ensure_ascii=False)
     #         f.write('\n')
     with open(f"{'/'.join(str(save_filename).split('/')[:-1])}/res.json", "a") as f:
-        json.dump(f'{press_name}_{key_channel_compression_ratio}: {metrics}', f, indent=4)
+        json.dump(f'{press_name}_{key_channel_compression_ratio}_{value_channel_compression_ratio}: {metrics}', f, indent=4)
         f.write('\n')
 
     

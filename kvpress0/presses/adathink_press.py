@@ -27,6 +27,7 @@ class AdaThinKPress(BasePress):
     """
 
     key_channel_compression_ratio: float = 0.0
+    value_channel_compression_ratio: float = 0.0
     window_size: int = 32
     max_capacity_prompt: int = field(init=False, default=None)
     threshold_ratio: float = 0.0
@@ -157,8 +158,19 @@ class AdaThinKPress(BasePress):
         # indices = key_scores.topk(n_pruned, dim=-1, largest=False).indices
         # indices = indices.unsqueeze(2).expand(-1, -1, q_len, -1)
         # keys = keys.scatter_(-1, indices, 0)
+        if self.value_channel_compression_ratio > 0:
+            # Value compression using different strategy than keys
+            pruned_values = compress_values(
+                values, 
+                queries_expand, 
+                self.value_channel_compression_ratio,
+                self.threshold_ratio,
+                self.pooling_ratio
+            )
+        else:
+            pruned_values = values
 
-        return pruned_keys, values
+        return pruned_keys, pruned_values
 
     @property
     def compression_ratio(self):
@@ -168,6 +180,343 @@ class AdaThinKPress(BasePress):
     def compression_ratio(self, value):
         raise AttributeError(f"compression ratio cannot be set for {type(self).__name__}")
 
+def compress_values(values, queries, compression_ratio, threshold_ratio=0, pooling_ratio=0):
+    """
+    Value compression with different strategy than keys.
+    Values carry the actual information content, so we use different importance metrics.
+    Each token's each dimension is evaluated independently.
+    
+    Args:
+        values: (bsz, num_heads, seq_len, head_dim)
+        queries: (bsz, num_heads, window_size, head_dim) 
+        compression_ratio: ratio of dimensions to compress
+        threshold_ratio: threshold for dynamic selection
+        pooling_ratio: pooling strategy parameter
+    """
+    bsz, num_heads, seq_len, head_dim = values.shape
+    
+    # Strategy 1: Value magnitude-based importance (per token, per dimension)
+    # Keep both seq_len and head_dim dimensions for fine-grained control
+    value_magnitudes = torch.abs(values)  # (bsz, num_heads, seq_len, head_dim)
+    
+    # # Strategy 2: Query-value interaction importance (per token, per dimension)
+    # # Measure how much each value element contributes to query-value interactions
+    # if queries.shape[2] > 0:  # if we have queries
+    #     # Calculate interaction for each token-dimension pair
+    #     queries_mean = queries.mean(dim=2)  # (bsz, num_heads, head_dim)
+    #     queries_expanded = queries_mean.unsqueeze(2).expand(-1, -1, seq_len, -1)  # (bsz, num_heads, seq_len, head_dim)
+        
+    #     # Element-wise importance: how much each value element contributes
+    #     interaction_scores = torch.abs(values * queries_expanded)  # (bsz, num_heads, seq_len, head_dim)
+        
+    #     # Combine magnitude and interaction scores
+    #     importance_scores = value_magnitudes * 0.6 + interaction_scores * 0.4  # (bsz, num_heads, seq_len, head_dim)
+    # else:
+    importance_scores = value_magnitudes
+    
+    # Strategy 3: Information diversity preservation (per token, per dimension)
+    # Calculate variance across sequence for each dimension
+    value_variance_across_seq = torch.var(values, dim=2, keepdim=True)  # (bsz, num_heads, 1, head_dim)
+    value_variance_across_seq = value_variance_across_seq.expand(-1, -1, seq_len, -1)  # (bsz, num_heads, seq_len, head_dim)
+    
+    # Calculate variance across dimensions for each token
+    value_variance_across_dim = torch.var(values, dim=3, keepdim=True)  # (bsz, num_heads, seq_len, 1)
+    value_variance_across_dim = value_variance_across_dim.expand(-1, -1, -1, head_dim)  # (bsz, num_heads, seq_len, head_dim)
+    
+    # Combine both variance measures
+    diversity_scores = (value_variance_across_seq + value_variance_across_dim) / 2
+    diversity_scores = diversity_scores / (diversity_scores.max(dim=-1, keepdim=True)[0].max(dim=-2, keepdim=True)[0] + 1e-8)
+    
+    # Final importance combines multiple factors (maintains seq_len and head_dim)
+    final_scores = importance_scores * 0.7 + diversity_scores * 0.3  # (bsz, num_heads, seq_len, head_dim)
+    
+    # Create mask based on importance scores (element-wise)
+    # We can either use global threshold or per-token/per-head threshold
+    if threshold_ratio > 0:
+        # Dynamic threshold-based selection (element-wise)
+        # Flatten for sorting while keeping track of original positions
+        flat_scores = final_scores.view(bsz, num_heads, -1)  # (bsz, num_heads, seq_len * head_dim)
+        sorted_scores, sorted_indices = torch.sort(flat_scores, dim=-1, descending=True)
+        
+        cumulative_scores = torch.cumsum(sorted_scores, dim=-1)
+        total_scores = cumulative_scores[..., -1:]
+        is_above_threshold = cumulative_scores > (threshold_ratio * total_scores)
+        threshold_indices = is_above_threshold.to(torch.float32).argmax(dim=-1)  # (bsz, num_heads)
+        
+        # Create element-wise mask
+        mask = torch.zeros_like(values, dtype=torch.bool)
+        flat_mask = mask.view(bsz, num_heads, -1)
+        
+        for b in range(bsz):
+            for h in range(num_heads):
+                n_keep = max(1, threshold_indices[b, h].item() + 1)
+                keep_indices = sorted_indices[b, h, :n_keep]
+                flat_mask[b, h, keep_indices] = True
+                
+        mask = flat_mask.view(bsz, num_heads, seq_len, head_dim)
+    else:
+        # Fixed ratio selection (element-wise)
+        # n_total_elements = seq_len * head_dim
+        # n_keep = max(1, int(n_total_elements * (1 - compression_ratio)))
+        
+        # Flatten and sort
+        # flat_scores = final_scores.view(bsz, num_heads, -1)
+        _, sorted_indices = torch.sort(final_scores, dim=-1, descending=True)
+        mask = torch.ones_like(values, dtype=torch.bool)
+        mask.scatter_(-1, sorted_indices[..., -int(compression_ratio * head_dim):], False)
+        
+        # # Create mask
+        # mask = torch.zeros_like(values, dtype=torch.bool)
+        # flat_mask = mask.view(bsz, num_heads, -1)
+        
+        # keep_indices = sorted_indices[..., :n_keep]
+        # flat_mask.scatter_(-1, keep_indices, True)
+        # mask = flat_mask.view(bsz, num_heads, seq_len, head_dim)
+    
+    # Apply different reconstruction strategies based on pooling_ratio
+    if pooling_ratio == 0.5:
+        # PCA-based reconstruction for values
+        return generate_value_pca_fill(values, mask)
+    elif pooling_ratio == 0.3:
+        # Interpolation-based reconstruction
+        return generate_value_interpolated_fill(values, mask)
+    elif pooling_ratio == 0.7:
+        # Statistical distribution-based fill
+        return generate_value_statistical_fill(values, mask, 'normal')
+    elif pooling_ratio == 0.6:
+        # Statistical distribution-based fill  
+        return generate_value_statistical_fill(values, mask, 'exponential')
+    elif pooling_ratio == 0.65:
+        # Mean-based reconstruction for values
+        return generate_value_mean_fill(values, mask)
+    else:
+        # Simple masking
+        return values * mask
+
+def generate_value_pca_fill(values, mask, n_components=8):
+    """
+    PCA-based reconstruction for value cache.
+    Values need more careful reconstruction as they directly affect output.
+    """
+    recovered_values = values.clone()
+    bsz, num_heads, seq_len, head_dim = values.shape
+    
+    for b in range(bsz):
+        for h in range(num_heads):
+            # Get valid (non-masked) dimensions across all sequence positions
+            head_values = values[b, h]  # (seq_len, head_dim)
+            head_mask = mask[b, h]      # (seq_len, head_dim)
+            
+            # Find dimensions that have valid data across most tokens
+            valid_dim_ratio = head_mask.float().mean(dim=0)  # (head_dim,)
+            reliable_dims = valid_dim_ratio > 0.5  # Dimensions valid in >50% of tokens
+            
+            if reliable_dims.sum() > n_components:
+                reliable_data = head_values[:, reliable_dims]  # (seq_len, n_reliable)
+                
+                try:
+                    # Apply PCA to reliable dimensions
+                    from sklearn.decomposition import PCA
+                    pca = PCA(n_components=min(n_components, reliable_data.shape[1]))
+                    
+                    # Fit PCA on all sequence positions
+                    reliable_data_np = reliable_data.detach().cpu().numpy()
+                    pca.fit(reliable_data_np)
+                    
+                    # Transform and inverse transform to get reconstructed values
+                    transformed = pca.transform(reliable_data_np)
+                    reconstructed = pca.inverse_transform(transformed)
+                    reconstructed_tensor = torch.tensor(reconstructed, device=values.device, dtype=values.dtype)
+                    
+                    # Fill in the reliable dimensions
+                    recovered_values[b, h, :, reliable_dims] = reconstructed_tensor
+                    
+                except Exception as e:
+                    print(f"PCA failed for batch {b}, head {h}: {e}")
+                    # Fallback to mean filling
+                    mean_values = head_values[head_mask].mean()
+                    recovered_values[b, h][~head_mask] = mean_values
+            else:
+                # Not enough reliable dimensions, use simple mean filling
+                mean_values = head_values[head_mask].mean()
+                recovered_values[b, h][~head_mask] = mean_values
+    
+    return recovered_values
+
+def generate_value_interpolated_fill(values, mask):
+    """
+    Interpolation-based filling for value cache using tensor operations.
+    Uses temporal and dimensional correlations efficiently.
+    """
+    bsz, num_heads, seq_len, head_dim = values.shape
+    recovered_values = values.clone()
+    missing_mask = ~mask
+    
+    # Method 1: Dimension-wise filling (vectorized across all dimensions)
+    # Calculate mean for each dimension across all valid positions
+    dim_valid_counts = mask.sum(dim=2, keepdim=True)  # (bsz, num_heads, 1, head_dim)
+    dim_means = (values * mask).sum(dim=2, keepdim=True) / (dim_valid_counts + 1e-8)  # (bsz, num_heads, 1, head_dim)
+    dim_fill = dim_means.expand(-1, -1, seq_len, -1)  # (bsz, num_heads, seq_len, head_dim)
+    
+    # Method 2: Token-wise filling (vectorized across all tokens)
+    # Calculate mean for each token using valid dimensions
+    token_valid_counts = mask.sum(dim=3, keepdim=True)  # (bsz, num_heads, seq_len, 1)
+    token_means = (values * mask).sum(dim=3, keepdim=True) / (token_valid_counts + 1e-8)  # (bsz, num_heads, seq_len, 1)
+    token_fill = token_means.expand(-1, -1, -1, head_dim)  # (bsz, num_heads, seq_len, head_dim)
+    
+    # Method 3: Spatial interpolation (use neighboring tokens)
+    # Create shifted versions for temporal interpolation
+    prev_values = torch.roll(values, shifts=1, dims=2)  # Previous token values
+    next_values = torch.roll(values, shifts=-1, dims=2)  # Next token values
+    prev_mask = torch.roll(mask, shifts=1, dims=2)      # Previous token mask
+    next_mask = torch.roll(mask, shifts=-1, dims=2)     # Next token mask
+    
+    # Handle boundary conditions
+    prev_values[:, :, 0, :] = 0
+    next_values[:, :, -1, :] = 0
+    prev_mask[:, :, 0, :] = False
+    next_mask[:, :, -1, :] = False
+    
+    # Calculate interpolated values where both neighbors are valid
+    both_valid = prev_mask & next_mask
+    spatial_fill = torch.where(both_valid, 
+                              (prev_values + next_values) / 2, 
+                              torch.where(prev_mask, prev_values,
+                                        torch.where(next_mask, next_values, values)))
+    
+    # Hierarchical filling strategy using tensor operations
+    # Start with dimension-wise means
+    fill_values = dim_fill.clone()
+    
+    # Override with token-wise means where token has valid data
+    has_valid_token_data = token_valid_counts.squeeze(-1) > 0  # (bsz, num_heads, seq_len)
+    has_valid_token_expanded = has_valid_token_data.unsqueeze(-1).expand(-1, -1, -1, head_dim)
+    fill_values = torch.where(has_valid_token_expanded, token_fill, fill_values)
+    
+    # Override with spatial interpolation where available
+    has_spatial_data = (prev_mask | next_mask)
+    fill_values = torch.where(has_spatial_data, spatial_fill, fill_values)
+    
+    # Apply filling only to missing positions
+    recovered_values = torch.where(missing_mask, fill_values, recovered_values)
+    
+    return recovered_values
+
+def generate_value_statistical_fill(values, mask, distribution='normal'):
+    """
+    Statistical distribution-based filling for value cache using tensor operations.
+    """
+    bsz, num_heads, seq_len, head_dim = values.shape
+    recovered_values = values.clone()
+    missing_mask = ~mask
+    
+    # Calculate statistics per head using tensor operations
+    valid_values_masked = values * mask  # Zero out invalid positions
+    valid_counts = mask.sum(dim=(2, 3), keepdim=True)  # (bsz, num_heads, 1, 1)
+    
+    # Calculate mean and other statistics per head
+    head_means = valid_values_masked.sum(dim=(2, 3), keepdim=True) / (valid_counts + 1e-8)  # (bsz, num_heads, 1, 1)
+    
+    if distribution == 'normal':
+        # Calculate variance per head
+        squared_diff = (valid_values_masked - head_means.expand_as(values)) ** 2 * mask
+        head_vars = squared_diff.sum(dim=(2, 3), keepdim=True) / (valid_counts + 1e-8)
+        head_stds = torch.sqrt(head_vars).clamp(min=1e-6)
+        
+        # Expand to full shape for broadcasting
+        means_expanded = head_means.expand(bsz, num_heads, seq_len, head_dim)
+        stds_expanded = head_stds.expand(bsz, num_heads, seq_len, head_dim)
+        
+        # Generate normal distributed values for all missing positions
+        normal_dist = torch.distributions.Normal(means_expanded, stds_expanded)
+        fill_values = normal_dist.sample()
+        
+    elif distribution == 'exponential':
+        # Calculate absolute mean for exponential distribution
+        abs_valid = torch.abs(valid_values_masked)
+        abs_means = abs_valid.sum(dim=(2, 3), keepdim=True) / (valid_counts + 1e-8)
+        abs_means_clamped = abs_means.clamp(min=1e-6)
+        rates = 1.0 / abs_means_clamped
+        
+        # Expand rates for broadcasting
+        rates_expanded = rates.expand(bsz, num_heads, seq_len, head_dim)
+        
+        # Generate exponential distributed values
+        exp_dist = torch.distributions.Exponential(rates_expanded)
+        fill_values = exp_dist.sample()
+        
+        # Preserve signs based on original distribution per head
+        sign_probs = (valid_values_masked > 0).float().sum(dim=(2, 3), keepdim=True) / (valid_counts + 1e-8)
+        sign_probs_expanded = sign_probs.expand(bsz, num_heads, seq_len, head_dim)
+        
+        # Generate random signs
+        signs = torch.bernoulli(sign_probs_expanded) * 2 - 1
+        fill_values = fill_values * signs
+    
+    else:
+        # Fallback to mean filling
+        fill_values = head_means.expand(bsz, num_heads, seq_len, head_dim)
+    
+    # Apply filling only to missing positions
+    recovered_values = torch.where(missing_mask, fill_values.to(values.dtype), recovered_values)
+    
+    return recovered_values
+
+def generate_value_mean_fill(values, mask):
+    """
+    Mean-based filling for value cache using tensor operations.
+    Strategy: Use mean of pruned (masked-out) values to fill missing positions.
+    """
+    bsz, num_heads, seq_len, head_dim = values.shape
+    recovered_values = values.clone()
+    missing_mask = ~mask  # Positions that need to be filled
+    pruned_mask = ~mask   # Positions that were pruned (same as missing_mask)
+    
+    # Strategy 1: Global mean of pruned values per head
+    # Calculate mean of all pruned values for each head
+    # pruned_valid_counts = pruned_mask.sum(dim=(2, 3), keepdim=True)  # (bsz, num_heads, 1, 1)
+    # global_pruned_means = (values * pruned_mask).sum(dim=(2, 3), keepdim=True) / (pruned_valid_counts + 1e-8)  # (bsz, num_heads, 1, 1)
+    
+    # # Strategy 2: Dimension-wise mean of pruned values
+    # # Calculate mean of pruned values for each dimension across sequence
+    # dim_pruned_counts = pruned_mask.sum(dim=2, keepdim=True)  # (bsz, num_heads, 1, head_dim)
+    # dim_pruned_means = (values * pruned_mask).sum(dim=2, keepdim=True) / (dim_pruned_counts + 1e-8)  # (bsz, num_heads, 1, head_dim)
+    
+    # Strategy 3: Token-wise mean of pruned values (MODIFIED)
+    # For each token, use mean of its own pruned dimensions to fill missing positions
+    token_pruned_counts = pruned_mask.sum(dim=3, keepdim=True)  # (bsz, num_heads, seq_len, 1)
+    token_pruned_means = (values * pruned_mask).sum(dim=3, keepdim=True) / (token_pruned_counts + 1e-8)  # (bsz, num_heads, seq_len, 1)
+    
+    # Create hierarchical filling strategy
+    # Priority 1: Use token's own pruned mean if token has pruned dimensions
+    has_pruned_dims = token_pruned_counts.squeeze(-1) > 0  # (bsz, num_heads, seq_len)
+    token_fill = token_pruned_means.expand(-1, -1, -1, head_dim)  # (bsz, num_heads, seq_len, head_dim)
+    
+    # # Priority 2: Use dimension-wise pruned mean for tokens with no pruned dimensions
+    # dim_fill = dim_pruned_means.expand(-1, -1, seq_len, -1)  # (bsz, num_heads, seq_len, head_dim)
+    
+    # # Priority 3: Use global pruned mean as final fallback
+    # global_fill = global_pruned_means.expand(-1, -1, seq_len, head_dim)  # (bsz, num_heads, seq_len, head_dim)
+    
+    # Apply hierarchical filling using tensor operations
+    # Start with global pruned mean, then override with better estimates where available
+    # fill_values = global_fill.clone()
+    
+    # # Override with dimension-wise pruned means where dimension has pruned data
+    # dim_has_pruned_data = dim_pruned_counts.squeeze(2) > 0  # (bsz, num_heads, head_dim)
+    # dim_has_pruned_expanded = dim_has_pruned_data.unsqueeze(2).expand(-1, -1, seq_len, -1)
+    # fill_values = torch.where(dim_has_pruned_expanded, dim_fill, fill_values)
+    
+    # Override with token-wise pruned means where token has pruned dimensions
+    # breakpoint()
+    # has_pruned_dims_expanded = has_pruned_dims.unsqueeze(-1).expand(-1, -1, -1, head_dim)
+    # fill_values = torch.where(has_pruned_dims_expanded, token_fill, fill_values)
+    
+    # Apply the filling only to missing positions (mask == False)
+    # recovered_values = torch.where(missing_mask, token_fill, recovered_values)
+    
+    return torch.where(missing_mask, token_fill, recovered_values)
+
 def dynamic_score_selection_norm(queries, keys, threshold_ratio=0, key_channel_compression_ratio=0, pooling_ratio=0):
     bsz, num_heads, seq_len, head_dim = keys.shape
     # queries_norm = torch.nn.functional.normalize(queries, dim=-1)
@@ -175,8 +524,10 @@ def dynamic_score_selection_norm(queries, keys, threshold_ratio=0, key_channel_c
     
     q_norm = torch.norm(queries, dim=-2, p=2).unsqueeze(-2)
     k_norm = torch.pow(keys, 2)
+    # k_norm = torch.abs(keys)
     sorted_indices = torch.argsort(k_norm * q_norm, dim=-1, descending=True)
     contributions = torch.pow(keys, 2) * torch.norm(queries, dim=-2, p=2).unsqueeze(-2)
+    # contributions = torch.abs(keys) * torch.norm(queries, dim=-2, p=2).unsqueeze(-2)
     group_indicator = torch.zeros(bsz, num_heads, seq_len).to(queries.device)
     topk_ratios = [key_channel_compression_ratio]
     topk = head_dim - int(key_channel_compression_ratio * head_dim)
