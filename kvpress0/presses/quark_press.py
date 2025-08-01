@@ -157,13 +157,7 @@ def compress_values(values, queries, compression_ratio, threshold_ratio=0, pooli
 
     
     # Apply different reconstruction strategies based on pooling_ratio
-    if pooling_ratio == 0.5:
-        # PCA-based reconstruction for values
-        return generate_value_pca_fill(values, mask)
-    elif pooling_ratio == 0.3:
-        # Interpolation-based reconstruction
-        return generate_value_interpolated_fill(values, mask)
-    elif pooling_ratio == 0.7:
+    if pooling_ratio == 0.7:
         # Statistical distribution-based fill
         return generate_value_statistical_fill(values, mask, 'normal')
     elif pooling_ratio == 0.6:
@@ -175,115 +169,6 @@ def compress_values(values, queries, compression_ratio, threshold_ratio=0, pooli
     else:
         # Simple masking
         return values * mask
-
-def generate_value_pca_fill(values, mask, n_components=8):
-    """
-    PCA-based reconstruction for value cache.
-    Values need more careful reconstruction as they directly affect output.
-    """
-    recovered_values = values.clone()
-    bsz, num_heads, seq_len, head_dim = values.shape
-    
-    for b in range(bsz):
-        for h in range(num_heads):
-            # Get valid (non-masked) dimensions across all sequence positions
-            head_values = values[b, h]  # (seq_len, head_dim)
-            head_mask = mask[b, h]      # (seq_len, head_dim)
-            
-            # Find dimensions that have valid data across most tokens
-            valid_dim_ratio = head_mask.float().mean(dim=0)  # (head_dim,)
-            reliable_dims = valid_dim_ratio > 0.5  # Dimensions valid in >50% of tokens
-            
-            if reliable_dims.sum() > n_components:
-                reliable_data = head_values[:, reliable_dims]  # (seq_len, n_reliable)
-                
-                try:
-                    # Apply PCA to reliable dimensions
-                    from sklearn.decomposition import PCA
-                    pca = PCA(n_components=min(n_components, reliable_data.shape[1]))
-                    
-                    # Fit PCA on all sequence positions
-                    reliable_data_np = reliable_data.detach().cpu().numpy()
-                    pca.fit(reliable_data_np)
-                    
-                    # Transform and inverse transform to get reconstructed values
-                    transformed = pca.transform(reliable_data_np)
-                    reconstructed = pca.inverse_transform(transformed)
-                    reconstructed_tensor = torch.tensor(reconstructed, device=values.device, dtype=values.dtype)
-                    
-                    # Fill in the reliable dimensions
-                    recovered_values[b, h, :, reliable_dims] = reconstructed_tensor
-                    
-                except Exception as e:
-                    print(f"PCA failed for batch {b}, head {h}: {e}")
-                    # Fallback to mean filling
-                    mean_values = head_values[head_mask].mean()
-                    recovered_values[b, h][~head_mask] = mean_values
-            else:
-                # Not enough reliable dimensions, use simple mean filling
-                mean_values = head_values[head_mask].mean()
-                recovered_values[b, h][~head_mask] = mean_values
-    
-    return recovered_values
-
-def generate_value_interpolated_fill(values, mask):
-    """
-    Interpolation-based filling for value cache using tensor operations.
-    Uses temporal and dimensional correlations efficiently.
-    """
-    bsz, num_heads, seq_len, head_dim = values.shape
-    recovered_values = values.clone()
-    missing_mask = ~mask
-    
-    # Method 1: Dimension-wise filling (vectorized across all dimensions)
-    # Calculate mean for each dimension across all valid positions
-    dim_valid_counts = mask.sum(dim=2, keepdim=True)  # (bsz, num_heads, 1, head_dim)
-    dim_means = (values * mask).sum(dim=2, keepdim=True) / (dim_valid_counts + 1e-8)  # (bsz, num_heads, 1, head_dim)
-    dim_fill = dim_means.expand(-1, -1, seq_len, -1)  # (bsz, num_heads, seq_len, head_dim)
-    
-    # Method 2: Token-wise filling (vectorized across all tokens)
-    # Calculate mean for each token using valid dimensions
-    token_valid_counts = mask.sum(dim=3, keepdim=True)  # (bsz, num_heads, seq_len, 1)
-    token_means = (values * mask).sum(dim=3, keepdim=True) / (token_valid_counts + 1e-8)  # (bsz, num_heads, seq_len, 1)
-    token_fill = token_means.expand(-1, -1, -1, head_dim)  # (bsz, num_heads, seq_len, head_dim)
-    
-    # Method 3: Spatial interpolation (use neighboring tokens)
-    # Create shifted versions for temporal interpolation
-    prev_values = torch.roll(values, shifts=1, dims=2)  # Previous token values
-    next_values = torch.roll(values, shifts=-1, dims=2)  # Next token values
-    prev_mask = torch.roll(mask, shifts=1, dims=2)      # Previous token mask
-    next_mask = torch.roll(mask, shifts=-1, dims=2)     # Next token mask
-    
-    # Handle boundary conditions
-    prev_values[:, :, 0, :] = 0
-    next_values[:, :, -1, :] = 0
-    prev_mask[:, :, 0, :] = False
-    next_mask[:, :, -1, :] = False
-    
-    # Calculate interpolated values where both neighbors are valid
-    both_valid = prev_mask & next_mask
-    spatial_fill = torch.where(both_valid, 
-                              (prev_values + next_values) / 2, 
-                              torch.where(prev_mask, prev_values,
-                                        torch.where(next_mask, next_values, values)))
-    
-    # Hierarchical filling strategy using tensor operations
-    # Start with dimension-wise means
-    fill_values = dim_fill.clone()
-    
-    # Override with token-wise means where token has valid data
-    has_valid_token_data = token_valid_counts.squeeze(-1) > 0  # (bsz, num_heads, seq_len)
-    has_valid_token_expanded = has_valid_token_data.unsqueeze(-1).expand(-1, -1, -1, head_dim)
-    fill_values = torch.where(has_valid_token_expanded, token_fill, fill_values)
-    
-    # Override with spatial interpolation where available
-    has_spatial_data = (prev_mask | next_mask)
-    fill_values = torch.where(has_spatial_data, spatial_fill, fill_values)
-    
-    # Apply filling only to missing positions
-    recovered_values = torch.where(missing_mask, fill_values, recovered_values)
-    
-    return recovered_values
 
 def generate_value_statistical_fill(values, mask, distribution='normal'):
     """
@@ -404,8 +289,6 @@ def dynamic_score_selection_norm(queries, keys, threshold_ratio=0, key_channel_c
         return gamma(keys, ~mask)
     elif pooling_ratio == 0.7:
         return normal(keys, ~mask)
-    elif pooling_ratio == 0.75:
-        return normal_attn(contributions, q_norm, keys, ~mask, sorted_indices, topk)
     elif pooling_ratio == 0.755 or pooling_ratio == 0.754:
         return normal_attn(contributions, q_norm, keys, ~mask, sorted_indices, topk, False)
     elif pooling_ratio == 0.7555 or pooling_ratio == 0.7554:
