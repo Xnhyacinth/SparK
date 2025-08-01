@@ -15,7 +15,7 @@ for com in "${coms[@]}"
     echo ${com}
     echo ${ratio}
     # python metric.py --results_dir output000_0.0_${xxx}/results/Meta-Llama-3-8B-Instruct --compress_ratio ${ratio} --compress_q com --tem 0.0 --com_channel ${com} --threshold_ratio ${xxx} #--pooling_ratio ${xxx}
-    python metri.py --results_dir output000_0.65_0.0/results/Meta-Llama-3-8B-Instruct --compress_ratio ${ratio} --compress_q com --tem 0.0 --com_channel ${com} #--value_compress_ratio 0.3 #--threshold_ratio ${xxx} #--pooling_ratio ${xxx}
-    # python me.py --results_dir output000_0.65_0.0/results/Llama-3.1-8B-Instruct --compress_ratio ${ratio} --compress_q com --tem 0.0 --com_channel ${com} 
+    python metric_longbench.py --results_dir output000_0.65_0.0/results/Meta-Llama-3-8B-Instruct --compress_ratio ${ratio} --compress_q com --tem 0.0 --com_channel ${com} #--value_compress_ratio 0.3 #--threshold_ratio ${xxx} #--pooling_ratio ${xxx}
+    # python metric_ruler.py --results_dir output000_0.65_0.0/results/Llama-3.1-8B-Instruct --compress_ratio ${ratio} --compress_q com --tem 0.0 --com_channel ${com} 
     done 
   done

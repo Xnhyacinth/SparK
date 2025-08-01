@@ -102,7 +102,7 @@ if __name__ == '__main__':
     methods = [
         "full_kv", "streaming_llm", 'observed_attention', "expected_attention", 
         "adasnapkv", "criti_snapkv", "tova", "random", "snapkv", "snap_think", 
-        'snap_adathink', "pyramidkv", "pyramid_think", "pyramid_adathink"
+        'snap_quark', "pyramidkv", "pyramid_think", "pyramid_quark"
     ]
     datasets = ['16384', '8192', '4096']
     
@@ -124,7 +124,7 @@ if __name__ == '__main__':
             
                 # Construct file path
                 if args.compress_q is not None:
-                    if 'adathink' in method:
+                    if 'quark' in method:
                         prefix = ""
                         if args.threshold_ratio is not None:
                             prefix += f"__threshold{args.threshold_ratio}"
@@ -145,7 +145,7 @@ if __name__ == '__main__':
                         pattern = r'output[^/]*'
                         args.eval_file = os.path.join(re.sub(pattern, 'output_norm', args.results_dir), 'compress_questions', args.tem, args.compress_ratio, 'ruler', dataset)
                 else:
-                    if 'snap_adathink' in method:
+                    if 'snap_quark' in method:
                         prefix = ""
                         if args.threshold_ratio is not None:
                             prefix += f"__threshold{args.threshold_ratio}"

@@ -87,10 +87,10 @@ if __name__ == '__main__':
         ['random'],
         ['snapkv'],
         ['snap_think'],
-        ['snap_adathink'],
+        ['snap_quark'],
         ['pyramidkv'],
         ['pyramid_think'],
-        ['pyramid_adathink']
+        ['pyramid_quark']
     ]
     
     model2maxlen = json.load(open("longbench/config/model2maxlen.json", "r"))
@@ -100,14 +100,14 @@ if __name__ == '__main__':
         
         results_list[0].append(dataset)
         
-        for idx, method in enumerate(["full_kv", "streaming_llm", 'observed_attention', "expected_attention", "adasnapkv", "criti_snapkv", "tova", "random", "snapkv", "snap_think", 'snap_adathink', "pyramidkv", "pyramid_think", "pyramid_adathink"]):
+        for idx, method in enumerate(["full_kv", "streaming_llm", 'observed_attention', "expected_attention", "adasnapkv", "criti_snapkv", "tova", "random", "snapkv", "snap_think", 'snap_quark', "pyramidkv", "pyramid_think", "pyramid_quark"]):
             try:
                 args.method = method
                 args.dataset = dataset
                 
                 # Determine evaluation file path based on compression settings and method
                 if args.compress_q is not None:
-                    if 'adathink' in method:
+                    if 'quark' in method:
                         prefix = ""
                         if args.threshold_ratio is not None:
                             prefix += f"__threshold{args.threshold_ratio}"
@@ -128,7 +128,7 @@ if __name__ == '__main__':
                         pattern = r'output[^/]*'
                         args.eval_file = os.path.join(re.sub(pattern, 'output_norm', args.results_dir), 'compress_questions', args.tem, args.compress_ratio, 'longbench', dataset)
                 else:
-                    if 'snap_adathink' in method:
+                    if 'snap_quark' in method:
                         prefix = ""
                         if args.threshold_ratio is not None:
                             prefix += f"__threshold{args.threshold_ratio}"
@@ -147,7 +147,7 @@ if __name__ == '__main__':
                 scores = dict()
                 if 'full_kv' in method:
                     score = read_res_json(args.eval_file, f"{method}_0.0")
-                elif 'adathink' in method and args.value_compress_ratio is not None:
+                elif 'quark' in method and args.value_compress_ratio is not None:
                     score = read_res_json(args.eval_file, f"{method}_{args.com_channel}_{args.value_compress_ratio}")
                     if score == -1:
                         score = read_res_json(args.eval_file, f"{method}_{args.com_channel}_{args.pooling_ratio}_{args.value_compress_ratio}")

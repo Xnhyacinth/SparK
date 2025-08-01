@@ -26,7 +26,7 @@ from kvpress.presses.duo_attention_press import DuoAttentionPress
 from kvpress.presses.qfilter_press import QFilterPress
 from kvpress.presses.finch_press import FinchPress
 from kvpress.presses.pyramidkv_press import PyramidKVPress
-from kvpress0.presses.adathink_press import AdaThinKPress
+from kvpress0.presses.quark_press import QuarKPress
 
 # Patch the attention functions to support head-wise compression
 patch_attention_functions()
@@ -52,7 +52,7 @@ __all__ = [
     "KeyRerotationPress",
     "ChunkPress",
     "DuoAttentionPress",
-    "AdaThinKPress",
+    "QuarKPress",
     "ChunkKVPress",
     "PyramidKVPress",
     "QFilterPress",

@@ -5,13 +5,12 @@
 
 ```bash
 bash preinstall.sh
-bash insatll.sh
 ```
 
 ## Usage
 
 ```bash
-press_names=("snapkv" "pyramidkv" "streaming_llm" "tova" "observed_attention" "expected_attention")
+press_names=("snapkv" "pyramidkv" "streaming_llm" "tova" "observed_attention" "expected_attention" "pyramid_quark" "snap_quark" "pyramid_think" "snap_think")
 
 
 model=${1:-"llama3.1-8b-inst"} # model name
@@ -26,10 +25,10 @@ pooling_ratio=${8:-"0.0"}
 # threshold_ratio choices: 0.0 0.99 0.992 0.996 0.998 0.997...   control dynamic group and topp
 # pooling_ratio choices: 0.0 0.65 0.655 0.75...   control recover method  6* is exp and 7* is norm
 
-bash run2.sh # adathink recover with avg
-bash run4.sh # all baselines with think and adathink
+bash run2.sh # quark recover with avg
+bash run4.sh # all baselines with think and quark
 ```
 
-The specific parameters can be found in the method's implementation in [adathink_press](kvpress0/presses/adathink_press.py).
+The specific parameters can be found in the method's implementation in [quark_press](kvpress0/presses/quark_press.py).
 
 For more methods (press), see `PRESS_DICT` in [eval.py](eval.py).

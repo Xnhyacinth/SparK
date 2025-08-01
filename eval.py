@@ -34,7 +34,7 @@ from kvpress import (
     TOVAPress,
     DuoAttentionPress,
     ComposedPress,
-    AdaThinKPress,
+    QuarKPress,
     QFilterPress,
     PyramidKVPress,
     FinchPress,
@@ -77,10 +77,10 @@ PRESS_DICT = {
     "duo_attention": DuoAttentionPress(),
     "snap_think": ComposedPress([SnapKVPress(), ThinKPress()]),
     "full_kv": ExpectedAttentionPress(0.0),
-    "snap_adathink": ComposedPress([SnapKVPress(), AdaThinKPress()]),
+    "snap_quark": ComposedPress([SnapKVPress(), QuarKPress()]),
     "pyramidkv": PyramidKVPress(),
     "finch": FinchPress(),
-    "pyramid_adathink": ComposedPress([PyramidKVPress(), AdaThinKPress()]),
+    "pyramid_quark": ComposedPress([PyramidKVPress(), QuarKPress()]),
     "pyramid_think": ComposedPress([PyramidKVPress(), ThinKPress()]),
 }
 
@@ -202,7 +202,7 @@ def evaluate(
                 save_filename = save_filename.with_name(
                     save_filename.stem + f"__channel{key_channel_compression_ratio}" + save_filename.suffix
                 )
-            elif isinstance(ps, (AdaThinKPress)):
+            elif isinstance(ps, (QuarKPress)):
                 if threshold_ratio != 0:
                     ps.threshold_ratio = threshold_ratio
                     save_filename = save_filename.with_name(
@@ -231,7 +231,7 @@ def evaluate(
             else:
                 ps.compression_ratio = compression_ratio
             ps.max_capacity_prompt = max_capacity_prompt
-    elif isinstance(press, (ThinKPress)) or isinstance(press, (AdaThinKPress)):
+    elif isinstance(press, (ThinKPress)) or isinstance(press, (QuarKPress)):
         press.key_channel_compression_ratio = key_channel_compression_ratio
         press.max_capacity_prompt = max_capacity_prompt
     else:

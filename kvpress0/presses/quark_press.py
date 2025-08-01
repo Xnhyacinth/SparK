@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 1993-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-
 from dataclasses import dataclass, field
 from sklearn.decomposition import PCA
 import torch
@@ -13,18 +9,7 @@ import json
 
 
 @dataclass
-class AdaThinKPress(BasePress):
-    """
-    ThinK (https://arxiv.org/pdf/2407.21018) compresses the dimensions of the keys, and not the sequence length.
-    Hence it can be combined with any other press that compresses the sequence length, e.g.
-    press = ComposedPress([SnapKVPress(0.5), ThinKPress(0.5)])
-
-    Here, we zero out the pruned dimensions resulting in no memory gain (the shape of the keys remains the same).
-    To achieve memory savings, several options can be considered (see https://github.com/NVIDIA/kvpress/pull/18/),
-    we might implement them in the future, especially if other similar presses are requested.
-
-    This press has been reviewed by Yuhui Xu, first author of the ThinK paper.
-    """
+class QuarKPress(BasePress):
 
     key_channel_compression_ratio: float = 0.0
     value_channel_compression_ratio: float = 0.0
@@ -82,82 +67,10 @@ class AdaThinKPress(BasePress):
         bsz, num_key_value_heads, q_len, head_dim = keys.shape
         num_key_value_groups = module.config.num_attention_heads // num_key_value_heads
 
-        # attention_scores = torch.matmul(queries, keys_expand.transpose(-1, -2))  # (bsz, num_heads, window_size, q_len)
-        # attention_scores_norm = torch.norm(attention_scores, dim=-2)  # (bsz, num_heads, q_len)
-
-        # # Step 3: Normalize attention scores
-        # normalized_scores = attention_scores_norm / attention_scores_norm.sum(dim=-1, keepdim=True)  # Normalize along head_dim
-
-        # # Step 4: Sort and dynamically select dimensions
-        # sorted_indices = torch.argsort(normalized_scores, dim=-1, descending=True)  # (bsz, num_heads, head_dim)
-        # cumulative_sum = torch.zeros_like(normalized_scores)  # Initialize cumulative sum
-        # mask = torch.zeros_like(normalized_scores, dtype=torch.bool)
-        # queries_norm = torch.pow(queries, 2).mean(dim=2)  # (bsz, num_heads, head_dim)
-        # queries_norm = queries_norm.view(bsz, num_key_value_heads, num_key_value_groups, module.head_dim).mean(2)
-        # keys_norm = torch.pow(keys, 2).mean(dim=2)
-        # key_scores = queries_norm * keys_norm  # (bsz, num_key_value_heads, head_dim)
-        # breakpoint()
         queries = self.compute_window_queries(module, kwargs["hidden_states"], kwargs["position_embeddings"])
         queries_expand = queries.view(bsz, num_key_value_heads, num_key_value_groups, self.window_size,module.head_dim).mean(2)
-        # keys_expand = keys.unsqueeze(2).repeat(1, 1, num_key_value_groups, 1, 1).view(bsz, module.config.num_attention_heads, q_len, head_dim)
-        # queries_norm = torch.pow(queries, 2).mean(dim=2) # (bsz, num_heads, self.window_size, head_dim)
-        # queries_norm = queries_norm.view(bsz, num_key_value_heads, num_key_value_groups, module.head_dim).mean(2).unsqueeze(-1)
-        # breakpoint()
-        # keys_squared = torch.pow(keys, 2)
-        # key_scores = queries_norm * keys_squared
-        # pruned_keys = dynamic_token_wise_dim_selection_norm(queries_expand, keys)
-        # if self.pooling_ratio != 0:
-        #     reshaped_keys = keys.view(-1, head_dim)  # Shape: (bsz * num_key_value_heads * q_len, head_dim)
-        #     # mode = "max"
-        #     compressed_dim = int(self.pooling_ratio * head_dim)
-        #     kernel_size = int(1 / self.pooling_ratio)
-        #     # print(self.mode)
-        #     if self.mode == "avg":
-        #         # Average Pooling
-        #         pruned_keys = F.avg_pool1d(reshaped_keys.unsqueeze(1), kernel_size=kernel_size).squeeze(1)
-        #     elif self.mode == "max":
-        #         # Max Pooling
-        #         pruned_keys, _ = F.max_pool1d(reshaped_keys.unsqueeze(1), kernel_size=kernel_size, return_indices=True)
-        #         pruned_keys = pruned_keys.squeeze(1)
-        #     else:
-        #         raise ValueError(f"Invalid mode `{self.mode}`. Must be 'avg' or 'max'.")
-
-        #     # Reshape pruned keys back to original batched shape
-        #     pruned_keys = pruned_keys.view(bsz, num_key_value_heads, q_len, compressed_dim)
-
-        #     # Unpooling (reverse the pooling operation)
-        #     uncompressed_keys = F.interpolate(
-        #         pruned_keys.view(-1, compressed_dim).unsqueeze(1),
-        #         size=head_dim,
-        #         mode="linear",
-        #         align_corners=False
-        #     ).squeeze(1)
-
-        #     # Reshape uncompressed keys back to original batched shape
-        #     pruned_keys = uncompressed_keys.view(bsz, num_key_value_heads, q_len, head_dim)
-        #     # breakpoint()
-        # else:
-        # module.layer_idx
-        # breakpoint()
-        # bsz, num_heads, seq_len, head_dim = keys.shape
-        # keys_dict = {f"{module.layer_idx}": {}}
-        # for head_idx in range(num_heads):
-        #     json_obj = {head_idx: keys[0, head_idx, :, :].tolist()}
-        #     keys_dict[f"{module.layer_idx}"].update(json_obj)
-
-        # output_file = f"{self.outpath}/keys.jsonl"
-        # with open(output_file, "a+") as f:
-        #     f.write(json.dumps(keys_dict) + "\n")
         pruned_keys = dynamic_score_selection_norm(queries_expand, keys, self.threshold_ratio, self.key_channel_compression_ratio, self.pooling_ratio)
-        # pruned_keys = dynamic_score_selection(queries_expand, keys, self.threshold_ratio, self.key_channel_compression_ratio, self.pooling_ratio)
-        
-        # pruned_keys = prune_keys_to_norm(keys, queries_norm)
-        # breakpoint()
-        # Prune dimensions with the lowest scores by setting them to 0
-        # n_pruned = int(head_dim * self.key_channel_compression_ratio)
-        # indices = key_scores.topk(n_pruned, dim=-1, largest=False).indices
-        # indices = indices.unsqueeze(2).expand(-1, -1, q_len, -1)
-        # keys = keys.scatter_(-1, indices, 0)
+
         if self.value_channel_compression_ratio > 0:
             # Value compression using different strategy than keys
             pruned_values = compress_values(
@@ -195,27 +108,9 @@ def compress_values(values, queries, compression_ratio, threshold_ratio=0, pooli
     """
     bsz, num_heads, seq_len, head_dim = values.shape
     
-    # Strategy 1: Value magnitude-based importance (per token, per dimension)
-    # Keep both seq_len and head_dim dimensions for fine-grained control
     value_magnitudes = torch.abs(values)  # (bsz, num_heads, seq_len, head_dim)
-    
-    # # Strategy 2: Query-value interaction importance (per token, per dimension)
-    # # Measure how much each value element contributes to query-value interactions
-    # if queries.shape[2] > 0:  # if we have queries
-    #     # Calculate interaction for each token-dimension pair
-    #     queries_mean = queries.mean(dim=2)  # (bsz, num_heads, head_dim)
-    #     queries_expanded = queries_mean.unsqueeze(2).expand(-1, -1, seq_len, -1)  # (bsz, num_heads, seq_len, head_dim)
-        
-    #     # Element-wise importance: how much each value element contributes
-    #     interaction_scores = torch.abs(values * queries_expanded)  # (bsz, num_heads, seq_len, head_dim)
-        
-    #     # Combine magnitude and interaction scores
-    #     importance_scores = value_magnitudes * 0.6 + interaction_scores * 0.4  # (bsz, num_heads, seq_len, head_dim)
-    # else:
     importance_scores = value_magnitudes
-    
-    # Strategy 3: Information diversity preservation (per token, per dimension)
-    # Calculate variance across sequence for each dimension
+
     value_variance_across_seq = torch.var(values, dim=2, keepdim=True)  # (bsz, num_heads, 1, head_dim)
     value_variance_across_seq = value_variance_across_seq.expand(-1, -1, seq_len, -1)  # (bsz, num_heads, seq_len, head_dim)
     
@@ -256,22 +151,10 @@ def compress_values(values, queries, compression_ratio, threshold_ratio=0, pooli
         mask = flat_mask.view(bsz, num_heads, seq_len, head_dim)
     else:
         # Fixed ratio selection (element-wise)
-        # n_total_elements = seq_len * head_dim
-        # n_keep = max(1, int(n_total_elements * (1 - compression_ratio)))
-        
-        # Flatten and sort
-        # flat_scores = final_scores.view(bsz, num_heads, -1)
         _, sorted_indices = torch.sort(final_scores, dim=-1, descending=True)
         mask = torch.ones_like(values, dtype=torch.bool)
         mask.scatter_(-1, sorted_indices[..., -int(compression_ratio * head_dim):], False)
-        
-        # # Create mask
-        # mask = torch.zeros_like(values, dtype=torch.bool)
-        # flat_mask = mask.view(bsz, num_heads, -1)
-        
-        # keep_indices = sorted_indices[..., :n_keep]
-        # flat_mask.scatter_(-1, keep_indices, True)
-        # mask = flat_mask.view(bsz, num_heads, seq_len, head_dim)
+
     
     # Apply different reconstruction strategies based on pooling_ratio
     if pooling_ratio == 0.5:
@@ -472,48 +355,12 @@ def generate_value_mean_fill(values, mask):
     missing_mask = ~mask  # Positions that need to be filled
     pruned_mask = ~mask   # Positions that were pruned (same as missing_mask)
     
-    # Strategy 1: Global mean of pruned values per head
-    # Calculate mean of all pruned values for each head
-    # pruned_valid_counts = pruned_mask.sum(dim=(2, 3), keepdim=True)  # (bsz, num_heads, 1, 1)
-    # global_pruned_means = (values * pruned_mask).sum(dim=(2, 3), keepdim=True) / (pruned_valid_counts + 1e-8)  # (bsz, num_heads, 1, 1)
-    
-    # # Strategy 2: Dimension-wise mean of pruned values
-    # # Calculate mean of pruned values for each dimension across sequence
-    # dim_pruned_counts = pruned_mask.sum(dim=2, keepdim=True)  # (bsz, num_heads, 1, head_dim)
-    # dim_pruned_means = (values * pruned_mask).sum(dim=2, keepdim=True) / (dim_pruned_counts + 1e-8)  # (bsz, num_heads, 1, head_dim)
-    
-    # Strategy 3: Token-wise mean of pruned values (MODIFIED)
-    # For each token, use mean of its own pruned dimensions to fill missing positions
     token_pruned_counts = pruned_mask.sum(dim=3, keepdim=True)  # (bsz, num_heads, seq_len, 1)
     token_pruned_means = (values * pruned_mask).sum(dim=3, keepdim=True) / (token_pruned_counts + 1e-8)  # (bsz, num_heads, seq_len, 1)
     
     # Create hierarchical filling strategy
-    # Priority 1: Use token's own pruned mean if token has pruned dimensions
     has_pruned_dims = token_pruned_counts.squeeze(-1) > 0  # (bsz, num_heads, seq_len)
     token_fill = token_pruned_means.expand(-1, -1, -1, head_dim)  # (bsz, num_heads, seq_len, head_dim)
-    
-    # # Priority 2: Use dimension-wise pruned mean for tokens with no pruned dimensions
-    # dim_fill = dim_pruned_means.expand(-1, -1, seq_len, -1)  # (bsz, num_heads, seq_len, head_dim)
-    
-    # # Priority 3: Use global pruned mean as final fallback
-    # global_fill = global_pruned_means.expand(-1, -1, seq_len, head_dim)  # (bsz, num_heads, seq_len, head_dim)
-    
-    # Apply hierarchical filling using tensor operations
-    # Start with global pruned mean, then override with better estimates where available
-    # fill_values = global_fill.clone()
-    
-    # # Override with dimension-wise pruned means where dimension has pruned data
-    # dim_has_pruned_data = dim_pruned_counts.squeeze(2) > 0  # (bsz, num_heads, head_dim)
-    # dim_has_pruned_expanded = dim_has_pruned_data.unsqueeze(2).expand(-1, -1, seq_len, -1)
-    # fill_values = torch.where(dim_has_pruned_expanded, dim_fill, fill_values)
-    
-    # Override with token-wise pruned means where token has pruned dimensions
-    # breakpoint()
-    # has_pruned_dims_expanded = has_pruned_dims.unsqueeze(-1).expand(-1, -1, -1, head_dim)
-    # fill_values = torch.where(has_pruned_dims_expanded, token_fill, fill_values)
-    
-    # Apply the filling only to missing positions (mask == False)
-    # recovered_values = torch.where(missing_mask, token_fill, recovered_values)
     
     return torch.where(missing_mask, token_fill, recovered_values)
 
@@ -597,60 +444,6 @@ def dynamic_score_selection_norm(queries, keys, threshold_ratio=0, key_channel_c
     pruned_keys = keys * mask
     return pruned_keys
 
-def dynamic_score_selection(queries, keys, threshold_ratio=0, key_channel_compression_ratio=0, pooling_ratio=0):
-    bsz, num_heads, seq_len, head_dim = keys.shape
-    queries_norm = torch.nn.functional.normalize(queries, dim=-1)
-    keys_norm = torch.nn.functional.normalize(keys, dim=-1)
-    attention_scores = torch.matmul(queries_norm, keys_norm.transpose(-1, -2))
-    original_norm = torch.norm(attention_scores, dim=-2, p=2).unsqueeze(-1)
-
-    dim_contributions = []
-    contributions = []
-    for d in range(queries.size(-1)):
-        keys_masked = torch.zeros_like(keys_norm)
-        keys_masked[..., d] = keys_norm[..., d]
-
-        attention_scores_masked = torch.matmul(queries_norm, keys_masked.transpose(-1, -2))
-        masked_norm = torch.norm(attention_scores_masked, dim=-2, p=2)
-        contribution = masked_norm / original_norm.squeeze(-1)
-        dim_contributions.append(masked_norm)
-        contributions.append(contribution)
-    dim_contributions = torch.stack(dim_contributions, dim=-1)
-    sorted_indices = torch.argsort(dim_contributions, dim=-1, descending=True)
-    if threshold_ratio != 0:
-        contributions = torch.stack(contributions, dim=-1)
-        sorted_contributions = torch.gather(contributions, dim=-1, index=sorted_indices)
-        cumulative_scores = torch.cumsum(sorted_contributions, dim=-1)
-        is_above_threshold = cumulative_scores > (threshold_ratio * cumulative_scores[..., -1]).unsqueeze(-1)
-        threshold_indices = is_above_threshold.to(torch.float32).argmax(dim=-1)
-        mask = create_mask_by_threshold(sorted_indices, threshold_indices)
-    else:
-        mask = torch.ones_like(keys, dtype=torch.bool)
-        mask.scatter_(-1, sorted_indices[..., -int(key_channel_compression_ratio * head_dim):], False)
-    if pooling_ratio == 0.5:
-        return generate_pca_fill(keys.to(torch.float32), mask).to(keys.dtype)
-    elif pooling_ratio == 0.3:
-        return generate_interpolated_fill(keys, mask)
-    elif pooling_ratio == 0.9:
-        return gamma(keys, ~mask)
-    elif pooling_ratio == 0.7:
-        return normal(keys, ~mask)
-    elif pooling_ratio == 0.75:
-        return normal_attn(dim_contributions, queries_norm, keys, ~mask, int(key_channel_compression_ratio * head_dim))
-    elif pooling_ratio == 0.6:
-        return exponential(keys, ~mask)
-    elif pooling_ratio == 0.65:
-        return exponential_attn(attention_scores, queries_norm, keys, ~mask)
-    elif pooling_ratio == 0.99:
-        return dynamic_group()
-    num_selected_channels = torch.sum(mask).item()
-    print(f"Number of selected channels: {num_selected_channels}")
-    selected_channels_per_token = torch.sum(mask, dim=-1)
-    print(f"Selected channels per token shape: {selected_channels_per_token}")
-    print(f"Example: Selected channels for [batch=0, head=0, token=0]: {selected_channels_per_token[0, 0, 0].item()}")
-
-    pruned_keys = keys * mask
-    return pruned_keys
 
 def dynamic_group(is_above_threshold, head_dim, keys, sorted_indices):
     first_above_threshold_idx = torch.argmax(is_above_threshold.float(), dim=-1)
@@ -1137,437 +930,40 @@ def gamma(keys, mask):
 
 
 def generate_interpolated_fill(keys, mask):
-    """
-    对置零位置使用线性插值恢复。
 
-    Args:
-        keys (torch.Tensor): 原始数据 (bsz, num_heads, seq_len, head_dim)
-        mask (torch.BoolTensor): 已经置零的位置 `False` 表示需要填充，`True` 表示保留
-
-    Returns:
-        torch.Tensor: 插值填充后的 keys 数据 (同样维度)
-    """
     recovered_keys = keys.clone()
     bsz, num_heads, seq_len, head_dim = keys.shape
-    # values_to_interpolate = keys[~mask]  # 取出所有被置零的部分
-    surrounding_mean = torch.mean(keys[mask].view(bsz, num_heads, seq_len, -1), dim=-1)  # 取所有未被置零的部分的均值
+    # values_to_interpolate = keys[~mask]  
+    surrounding_mean = torch.mean(keys[mask].view(bsz, num_heads, seq_len, -1), dim=-1)  
     surrounding_mean = surrounding_mean.unsqueeze(-1).expand_as(recovered_keys[~mask].view(bsz, num_heads, seq_len, -1))
-    recovered_keys[~mask] = surrounding_mean.reshape(-1) # 用均值填充所有置零处
-    # for d in range(keys.size(-1)):  # 针对 head_dim 的每一维进行操作
-    #     mask_dim = mask[..., d]  # 当前维度的掩码
-    #     keys_dim = keys[..., d]  # 当前维度的特征值
-    #     breakpoint()
-    #     # 前后 token 的值进行插值 (矩阵化计算)
-    #     prev_values = torch.roll(keys_dim, shifts=1, dims=2)  # 向前一个 token 的值
-    #     next_values = torch.roll(keys_dim, shifts=-1, dims=2)  # 向后一个 token 的值
-    #     interpolated_values = (prev_values + next_values) / 2  # 线性插值
+    recovered_keys[~mask] = surrounding_mean.reshape(-1) 
 
-    #     # 对掩码为 False 的位置进行填充
-    #     recovered_keys[..., d][~mask_dim] = interpolated_values[~mask_dim]
-    # for i in range(keys.size(-1)):  # 遍历最后一维
-    #     mask_dim = mask[..., i]
-    #     if torch.any(~mask_dim):  # 如果这一维有被置零的情况
-    #         values_to_interpolate = keys[..., i][~mask_dim]  # 取出被置零的部分
-    #         surrounding_mean = torch.mean(keys[..., i][mask_dim])  # 取未被置零的部分的均值
-    #         recovered_keys[..., i][~mask_dim] = surrounding_mean  # 用均值填充置零处
     return recovered_keys
 
 def generate_pca_fill(keys, mask, n_components=10):
-    """
-    使用非零部分数据的主成分重新生成置零数据。
-
-    Args:
-        keys (torch.Tensor): 原始数据 (bsz, num_heads, seq_len, head_dim)
-        mask (torch.BoolTensor): 已经置零的位置 `False` 表示需要填充，`True` 表示保留
-
-    Returns:
-        torch.Tensor: 填充后的 keys 数据 (同样维度)
-    """
-    recovered_keys = keys.clone()  # 克隆原始数据以进行操作
+    recovered_keys = keys.clone()  
     bsz, num_heads, seq_len, head_dim = keys.shape
-    # keys_2d = keys.view(bsz * num_heads, seq_len, head_dim).permute(0, 2, 1).reshape(bsz * num_heads, head_dim * seq_len)
-    # mask_2d = mask.view(bsz * num_heads, seq_len, head_dim).permute(0, 2, 1).reshape(bsz * num_heads, head_dim * seq_len)
-
-    # # 找到所有有未置零值的 token 位置
-    # nonzero_tokens = torch.nonzero(mask_2d.sum(dim=1), as_tuple=True)[0]
-
-    # if nonzero_tokens.numel() > 0:  # 如果有未置零的 token
-    #     valid_data = keys_2d[mask_2d].view(bsz * num_heads, seq_len, -1)  # 提取所有有效的上下文数据 (N, head_dim * seq_len)
-    #     breakpoint()
-    #     if valid_data.size(0) > 1:  # 如果有效数据不足，PCA 无法应用
-    #         pca_model = PCA(n_components=min(valid_data.size(-1), 10))  # 限制主成分
-    #         pca_model.fit(valid_data.cpu().numpy())  # 仅 fit 有效数据部分
-
-    #         # 对所有有未置零值的 token 进行批量处理
-    #         token_low_dims = pca_model.transform(valid_data[nonzero_tokens].cpu().numpy())
-    #         token_high_dims = pca_model.inverse_transform(token_low_dims)  # 恢复至原始空间
-
-    #         # 将重构的维度值赋回当前 token
-    #         token_reconstructed = torch.tensor(token_high_dims, device=keys.device)
-    #         breakpoint()
-    #         recovered_keys_2d = recovered_keys.view(bsz * num_heads, seq_len, head_dim).permute(0, 2, 1).reshape(bsz * num_heads, head_dim * seq_len)
-    #         recovered_keys_2d[~mask_2d] = token_reconstructed.view(-1).to(recovered_keys.dtype)
-
-    # # 将恢复后的二维矩阵转换回原始的 batch 和 head 维度
-    # recovered_keys = recovered_keys_2d.view(bsz, num_heads, head_dim, seq_len).permute(0, 1, 3, 2)
-    # keys_reshaped = keys.view(-1, seq_len, head_dim)  # (bsz * num_heads, seq_len, head_dim)
-    # mask_reshaped = mask.view(-1, seq_len, head_dim)  # (bsz * num_heads, seq_len, head_dim)
     
-    for b in range(bsz):  # 遍历每个 batch
-        for h in range(num_heads):  # 遍历每个 attention head
+    for b in range(bsz): 
+        for h in range(num_heads):  
             sub_keys = keys[b, h]  # (seq_len, head_dim)
             sub_mask = mask[b, h]  # (seq_len, head_dim)
             
             nonzero_tokens = torch.nonzero(sub_mask.sum(dim=1), as_tuple=True)[0]
-            if nonzero_tokens.numel() > 0:  # 如果有未置零的 token
-                valid_data = sub_keys[sub_mask]  # 提取所有有效的上下文数据 (N, head_dim)
-                valid_data = valid_data.view(sub_keys.size(0), -1)  # 确保二维矩阵 (N, head_dim)
+            if nonzero_tokens.numel() > 0:  
+                valid_data = sub_keys[sub_mask]  
+                valid_data = valid_data.view(sub_keys.size(0), -1)  
 
-                if valid_data.size(0) > 1:  # 如果有效数据不足，PCA 无法应用
-                    pca_model = PCA(n_components=min(valid_data.size(-1), 10))  # 限制主成分
-                    pca_model.fit(valid_data.cpu().numpy())  # 仅 fit 有效数据部分
+                if valid_data.size(0) > 1: 
+                    pca_model = PCA(n_components=min(valid_data.size(-1), 10))  
+                    pca_model.fit(valid_data.cpu().numpy())  
 
-                    # 对所有有未置零值的 token 进行批量处理
+
                     token_low_dims = pca_model.transform(valid_data[nonzero_tokens].cpu().numpy())
                     token_high_dims = pca_model.inverse_transform(token_low_dims)  # 恢复至原始空间
-                    # 将重构的维度值赋回当前 token
                     token_reconstructed = torch.tensor(token_high_dims, device=keys.device)
                     recovered_keys[b, h][~sub_mask] = token_reconstructed.view(-1).to(recovered_keys.dtype)
-    # recovered_keys = keys.clone()  # 克隆原始数据以进行操作
-    # for b in range(keys.size(0)):  # 遍历 batch
-    #     for h in range(keys.size(1)):  # 遍历 attention head
-    #         sub_keys = keys[b, h]  # 当前 batch 和 head 的 keys (seq_len, head_dim)
-    #         sub_mask = mask[b, h]  # 当前对应的有效掩码 (seq_len, head_dim)
 
-    #         for t in range(sub_keys.size(0)):  # 遍历每个 token 的位置
-    #             token_data = sub_keys[t]  # 当前 token 的特征数据 (head_dim,)
-    #             token_mask = sub_mask[t]  # 当前 token 的掩码 (head_dim,)
-
-    #             # 如果当前 token 有未置零的值，进行 PCA 动态重构
-    #             if torch.any(token_mask):  # 检查是否有未置零数据
-    #                 valid_data = sub_keys[sub_mask]  # 提取所有有效的上下文数据 (N, head_dim)
-    #                 valid_data = valid_data.view(sub_keys.size(0), -1)  # 确保二维矩阵 (N, head_dim)
-    #                 if valid_data.size(0) > 1:  # 如果有效数据不足，PCA 无法应用
-    #                     pca_model = PCA(n_components=min(valid_data.size(-1), 10))  # 限制主成分
-    #                     pca_model.fit(valid_data.cpu().numpy())  # 仅 fit 有效数据部分
-
-    #                     # 当前 token 的置零位置动态恢复
-    #                     missing_indices = torch.where(~token_mask)[0]  # 找到置零的位置 (head_dim 的维度索引)
-    #                     if len(missing_indices) > 0:
-    #                         token_low_dim = pca_model.transform(token_data[token_mask].cpu().numpy().reshape(1, -1))
-    #                         token_high_dim = pca_model.inverse_transform(token_low_dim)  # 恢复至原始空间
-
-    #                         # 将重构的维度值赋回当前 token
-    #                         token_reconstructed = torch.tensor(token_high_dim, device=keys.device).squeeze(0)
-    #                         recovered_keys[b, h, t, missing_indices] = token_reconstructed.to(recovered_keys.dtype)
-    # breakpoint()
     return recovered_keys
 
 
-def dynamic_token_wise_dim_selection_norm(queries, keys, threshold_ratio=0.999):
-    """
-    针对每个 token 动态筛选重要维度，保证每个 token 的乘积范数达到原始范数的 99%。
-
-    Args:
-        queries: Tensor of shape (bsz, num_heads, query_len, head_dim)
-        keys: Tensor of shape (bsz, num_heads, key_len, head_dim)
-        target_ratio: float, 保留原始范数的比例（默认 99%）
-
-    Returns:
-        compressed_queries: Tensor of shape (bsz, num_heads, query_len, selected_head_dim)
-        compressed_keys: Tensor of shape (bsz, num_heads, key_len, selected_head_dim)
-        mask: Boolean Tensor of shape (bsz, num_heads, query_len, head_dim), 表示每个 token 的筛选掩码
-    """
-    bsz, num_heads, seq_len, head_dim = keys.shape
-    # Step 1: 计算原始范数
-    queries_norm = torch.nn.functional.normalize(queries, dim=-1)
-    keys_norm = torch.nn.functional.normalize(keys, dim=-1)
-    attention_scores = torch.matmul(queries_norm, keys_norm.transpose(-1, -2))  # (bsz, num_heads, query_len, key_len)
-    original_norm = torch.norm(attention_scores, dim=-2, p=2).unsqueeze(-1)  # (bsz, num_heads, key_len)
-    # norms=torch.norm(torch.einsum('bhqd,bhkd->bhqk',queries,keys))
-    # breakpoint()
-
-    # Step 2: 计算每个维度的贡献
-    dim_contributions = []
-    for d in range(queries.size(-1)):
-        keys_masked = torch.zeros_like(keys_norm)
-        keys_masked[..., d] = keys_norm[..., d]  # 仅保留第 i 个维度的特征
-
-        attention_scores_masked = torch.matmul(queries_norm, keys_masked.transpose(-1, -2))
-        masked_norm = torch.norm(attention_scores_masked, dim=-2, p=2)  # (bsz, num_heads, key_len)
-        dim_contributions.append(masked_norm)
-    dim_contributions = torch.stack(dim_contributions, dim=-1)  # (bsz, num_heads, key_len, head_dim)
-    sorted_indices = torch.argsort(dim_contributions, dim=-1, descending=True)  # 每个 token 按 channel 贡献排序 (bsz, num_heads, seq_len, head_dim)
-    
-    # Step 3: 动态选择 top-k channels
-    # cumulative_sum = torch.zeros_like(dim_contributions)  # 用于存储累积和
-    cumulative_ratio = torch.ones_like(dim_contributions)
-    mask = torch.zeros_like(dim_contributions, dtype=torch.bool)  # 用于标记保留的 channel
-    # prev_ratio = torch.zeros_like(original_norm)
-    breakpoint()
-    for i in range(head_dim):
-        index = sorted_indices[:, :, :, i]  # 当前最高贡献的 channel 索引
-        # breakpoint()
-        selected_indices = sorted_indices[:, :, :, :i + 1]   
-        keys_masked = torch.zeros_like(keys)
-        keys_masked = keys_masked.scatter_(-1, selected_indices, keys.gather(-1, selected_indices))
-        cur_score = torch.norm(torch.matmul(queries, keys_masked.transpose(-1, -2)), dim=-2, p=2).unsqueeze(-1)
-
-        # cur_score = torch.sum(dim_contributions.gather(-1, sorted_indices[:, :, :, :i+1]), dim=-1).unsqueeze(-1)
-        cur_ratio = cur_score / original_norm
-        cumulative_ratio.scatter_(-1, index.unsqueeze(-1), cur_ratio)
-        # cumulative_sum.scatter_add_(-1, index.unsqueeze(-1), cur_score)
-        # current_ratio = cumulative_sum / original_norm # 当前累积平方和与原始平方和的比例
-        # breakpoint()
-        # mask = mask | (prev_ratio < threshold_ratio)
-        mask = mask | (cumulative_ratio < threshold_ratio)  # 保留当前 channel
-        # prev_ratio = current_ratio
-        if torch.all((cur_score / original_norm) >= threshold_ratio):
-            print('get threshold! Skip!')
-            # mask = mask | (cumulative_ratio < threshold_ratio)
-            # breakpoint()
-            break
-    sorted_cumulative_ratio = torch.gather(cumulative_ratio, dim=-1, index=sorted_indices)  # (bsz, num_heads, key_len, head_dim)
-    is_above_threshold = sorted_cumulative_ratio > threshold_ratio  # (bsz, num_heads, key_len, head_dim)
-    # 找到第一个满足条件的索引
-    threshold_indices = is_above_threshold.to(torch.float32).argmax(dim=-1)  # (bsz, num_heads, key_len)
-    breakpoint()
-    mask = create_mask_by_threshold(sorted_indices, threshold_indices)
-    
-    num_selected_channels = torch.sum(mask).item()  # 统计所有位置中被选中的 channel 数量
-    print(f"Number of selected channels: {num_selected_channels}")
-    selected_channels_per_token = torch.sum(mask, dim=-1)  # (bsz, num_heads, seq_len)
-    print(f"Selected channels per token shape: {selected_channels_per_token}")
-    print(f"Example: Selected channels for [batch=0, head=0, token=0]: {selected_channels_per_token[0, 0, 0].item()}")
-    
-    # Step 4: 裁剪 keys
-    pruned_keys = keys * mask # 将未保留的 channel 设置为 0
-    return pruned_keys
-
-def dynamic_token_wise_dim_selection(queries, keys, threshold_ratio=0.999):
-    """
-    针对每个 token 动态筛选重要维度，保证每个 token 的乘积范数达到原始范数的 99%。
-
-    Args:
-        queries: Tensor of shape (bsz, num_heads, query_len, head_dim)
-        keys: Tensor of shape (bsz, num_heads, key_len, head_dim)
-        target_ratio: float, 保留原始范数的比例（默认 99%）
-
-    Returns:
-        compressed_queries: Tensor of shape (bsz, num_heads, query_len, selected_head_dim)
-        compressed_keys: Tensor of shape (bsz, num_heads, key_len, selected_head_dim)
-        mask: Boolean Tensor of shape (bsz, num_heads, query_len, head_dim), 表示每个 token 的筛选掩码
-    """
-    bsz, num_heads, seq_len, head_dim = keys.shape
-    # Step 1: 计算原始范数
-    queries_norm = torch.nn.functional.normalize(queries, dim=-1)
-    keys_norm = torch.nn.functional.normalize(keys, dim=-1)
-    attention_scores = torch.matmul(queries, keys.transpose(-1, -2))  # (bsz, num_heads, query_len, key_len)
-    original_norm = torch.norm(attention_scores, dim=-2, p=2).unsqueeze(-1)  # (bsz, num_heads, key_len)
-    # norms=torch.norm(torch.einsum('bhqd,bhkd->bhqk',queries,keys))
-    # breakpoint()
-
-    # Step 2: 计算每个维度的贡献
-    dim_contributions = []
-    for d in range(queries.size(-1)):
-        keys_masked = torch.zeros_like(keys)
-        keys_masked[..., d] = keys[..., d]  # 仅保留第 i 个维度的特征
-
-        attention_scores_masked = torch.matmul(queries, keys_masked.transpose(-1, -2))
-        masked_norm = torch.norm(attention_scores_masked, dim=-2, p=2)  # (bsz, num_heads, key_len)
-        dim_contributions.append(masked_norm)
-    dim_contributions = torch.stack(dim_contributions, dim=-1)  # (bsz, num_heads, key_len, head_dim)
-    sorted_indices = torch.argsort(dim_contributions, dim=-1, descending=True)  # 每个 token 按 channel 贡献排序 (bsz, num_heads, seq_len, head_dim)
-    
-    # Step 3: 动态选择 top-k channels
-    # cumulative_sum = torch.zeros_like(dim_contributions)  # 用于存储累积和
-    cumulative_ratio = torch.ones_like(dim_contributions)
-    mask = torch.zeros_like(dim_contributions, dtype=torch.bool)  # 用于标记保留的 channel
-    # prev_ratio = torch.zeros_like(original_norm)
-    idx = 0
-    for i in range(head_dim):
-        index = sorted_indices[:, :, :, i]  # 当前最高贡献的 channel 索引
-        # breakpoint()
-        selected_indices = sorted_indices[:, :, :, :i + 1]   
-        keys_masked = torch.zeros_like(keys)
-        keys_masked = keys_masked.scatter_(-1, selected_indices, keys.gather(-1, selected_indices))
-        cur_score = torch.norm(torch.matmul(queries, keys_masked.transpose(-1, -2)), dim=-2, p=2).unsqueeze(-1)
-
-        # cur_score = torch.sum(dim_contributions.gather(-1, sorted_indices[:, :, :, :i+1]), dim=-1).unsqueeze(-1)
-        cur_ratio = cur_score / original_norm
-        cumulative_ratio.scatter_(-1, index.unsqueeze(-1), cur_ratio)
-        # cumulative_sum.scatter_add_(-1, index.unsqueeze(-1), cur_score)
-        # current_ratio = cumulative_sum / original_norm # 当前累积平方和与原始平方和的比例
-        # breakpoint()
-        # mask = mask | (prev_ratio < threshold_ratio)
-        mask = mask | (cumulative_ratio < threshold_ratio)  # 保留当前 channel
-        # prev_ratio = current_ratio
-        if torch.all((cur_score / original_norm) >= threshold_ratio):
-            print('get threshold! Skip!')
-            # mask = mask | (cumulative_ratio < threshold_ratio)
-            # breakpoint()
-            break
-    sorted_cumulative_ratio = torch.gather(cumulative_ratio, dim=-1, index=sorted_indices)  # (bsz, num_heads, key_len, head_dim)
-    is_above_threshold = sorted_cumulative_ratio > threshold_ratio  # (bsz, num_heads, key_len, head_dim)
-    # 找到第一个满足条件的索引
-    threshold_indices = is_above_threshold.to(torch.float32).argmax(dim=-1)  # (bsz, num_heads, key_len)
-    breakpoint()
-    mask = create_mask_by_threshold(sorted_indices, threshold_indices)
-    
-    num_selected_channels = torch.sum(mask).item()  # 统计所有位置中被选中的 channel 数量
-    print(f"Number of selected channels: {num_selected_channels}")
-    selected_channels_per_token = torch.sum(mask, dim=-1)  # (bsz, num_heads, seq_len)
-    print(f"Selected channels per token shape: {selected_channels_per_token}")
-    print(f"Example: Selected channels for [batch=0, head=0, token=0]: {selected_channels_per_token[0, 0, 0].item()}")
-    
-    # Step 4: 裁剪 keys
-    pruned_keys = keys * mask # 将未保留的 channel 设置为 0
-    return pruned_keys
-
-def create_mask_by_threshold(sorted_indices, threshold_indices):
-    """
-    根据 threshold_indices 和 sorted_indices 构造 mask，满足条件的及其之前的位置置为 1
-
-    Args:
-        sorted_indices: Tensor, 排序后的索引，形状 (bsz, num_heads, key_len, head_dim)
-        threshold_indices: Tensor, 每个 token 的第一个满足条件的索引，形状 (bsz, num_heads, key_len)
-
-    Returns:
-        mask: Tensor, 布尔类型的 mask，形状为 (bsz, num_heads, key_len, head_dim)
-    """
-    bsz, num_heads, key_len, head_dim = sorted_indices.shape
-
-    # 创建一个范围张量用于 mask 的比较，形状为 (1, 1, 1, head_dim)
-    range_tensor = torch.arange(head_dim, device=sorted_indices.device).view(1, 1, 1, head_dim)
-
-    # 将 threshold_indices 扩展为和 head_dim 可广播的形状
-    threshold_indices_expanded = threshold_indices.unsqueeze(-1)  # (bsz, num_heads, key_len, 1)
-
-    # 根据阈值构造 mask，范围内的置为 True
-    mask = range_tensor <= threshold_indices_expanded  # (bsz, num_heads, key_len, head_dim)
-
-    # mask 顺序仍基于原始排序，因此需要对其进行逆变换
-    reverse_mask = torch.zeros_like(mask, dtype=torch.bool)  # 初始化全 False
-    reverse_mask.scatter_(-1, sorted_indices, mask)  # 按照 sorted_indices 逆变换 mask
-
-    return reverse_mask
-
-
-def prune_keys(keys, queries, threshold_ratio=0.99):
-    bsz, num_heads, seq_len, head_dim = keys.shape
-    # 原始完整注意力分数
-    attention_scores = torch.matmul(queries, keys.transpose(-1, -2))  # (bsz, num_heads, window_size, q_len)
-    attention_scores_norm_original = torch.norm(attention_scores, dim=(-2, -1), p=2)  # (bsz, num_heads)
-
-    # 记录原始注意力范数用于误差计算
-    attention_norm_baseline = attention_scores_norm_original.mean()  # 一个标量，作为基准
-
-    # keys_expand 是压缩的 keys，形状为 (bsz, num_heads, q_len, head_dim)
-    # queries_expand 是压缩的 queries，形状为 (bsz, num_heads, window_size, head_dim)
-
-    # 单独计算每个 head_dim 的注意力分数
-    dim_attention_scores = []  # 存储每个 dim 的裁剪结果
-    dim_attention_contributions = []  # 存储每个 dim 对总范数的贡献
-    breakpoint()
-    dim_contributions = []
-    for d in range(module.head_dim):
-        # 提取单维度的 queries 和 keys
-        queries_single_dim = queries[..., d]  # (bsz, num_heads, query_len)
-        keys_single_dim = keys[..., d]  # (bsz, num_heads, key_len)
-
-        # 计算单维度的 attention_scores
-        attention_scores_single_dim = torch.matmul(queries_single_dim.unsqueeze(-1), keys_single_dim.unsqueeze(-2))
-        
-        # 计算单维度的范数
-        dim_norm = torch.norm(attention_scores_single_dim, dim=(-2, -1), p=2)  # (bsz, num_heads)
-        dim_contributions.append(dim_norm)
-
-    # 将每个维度的范数堆叠到一起
-    dim_contributions = torch.stack(dim_contributions, dim=-1)  # (bsz, num_heads, head_dim)
-
-    # 计算每个维度的平均贡献（用于排序）
-    dim_contribution_mean = dim_contributions.mean(dim=(0, 1))  # 平均贡献 (head_dim,)
-
-    sorted_indices = torch.argsort(dim_contribution_mean, descending=True)
-    # # 将所有通道的结果堆叠起来
-    # dim_attention_contributions = torch.stack(dim_attention_contributions, dim=-1)  # (bsz, num_heads, head_dim)
-
-    # # 计算通道贡献的总体排序
-    # dim_contribution_mean = dim_attention_contributions.mean(dim=(0, 1))  # 平均贡献 (head_dim,)
-    # sorted_indices = torch.argsort(dim_contribution_mean, descending=True)  # 从高到低排序
-
-    # # 初始化裁剪后的 keys 和累计误差
-    # mask = torch.zeros_like(keys, dtype=torch.bool)  # (bsz, num_heads, q_len, head_dim)
-    # current_attention_norm = 0.0
-
-    # # 逐步裁剪通道
-    # for i, dim_idx in enumerate(sorted_indices):
-    #     # 开启当前维度的 mask
-    #     mask[:, :, :, dim_idx] = True
-
-    #     # 计算裁剪后的 keys
-    #     keys_compressed = keys * mask.unsqueeze(-2)  # (bsz, num_heads, q_len, head_dim)
-
-    #     # 计算裁剪后的注意力分数
-    #     attention_scores_compressed = torch.matmul(queries, keys_compressed.transpose(-1, -2))
-    #     current_attention_norm = torch.norm(attention_scores_compressed, dim=(-2, -1), p=2).mean()
-
-    #     # 误差计算
-    #     error_percentage = (attention_norm_baseline - current_attention_norm) / attention_norm_baseline
-
-    #     # 判断是否满足误差阈值
-    #     if error_percentage < 0.01:  # 如果误差小于 1%
-    #         break
-
-    # return keys * mask.unsqueeze(-2)
-
-
-def prune_keys_to_norm(keys, queries_norm, threshold_ratio=0.99):
-    """
-    对每个 token 的 keys 动态裁剪 channel，保持范数为原始范数的 98%。
-    keys: shape (bsz, num_heads, seq_len, head_dim)
-    threshold_ratio: 保留范数比例，默认为 98%。
-    返回: 裁剪后的 keys (bsz, num_heads, seq_len, head_dim)
-    """
-    bsz, num_heads, seq_len, head_dim = keys.shape
-    # breakpoint()
-    # Step 1: 计算原始 Frobenius 范数
-    keys_squared = torch.pow(keys, 2)  # 每个 channel 的平方值
-    # keys_norm = torch.matmul(queries_norm, keys_squared)
-    # key_scores = queries_norm * keys_squared
-    original_norm = keys_squared.sum(dim=-1, keepdim=True)  # 每个 token 的原始范数 (bsz, num_heads, seq_len, 1)
-    
-    # Step 2: 按 channel 的贡献排序
-    sorted_indices = torch.argsort(keys_squared, dim=-1, descending=True)  # 每个 token 按 channel 贡献排序 (bsz, num_heads, seq_len, head_dim)
-    
-    # Step 3: 动态选择 top-k channels
-    cumulative_sum = torch.zeros_like(keys_squared)  # 用于存储累积和
-    mask = torch.zeros_like(keys_squared, dtype=torch.bool)  # 用于标记保留的 channel
-    idx = 0
-    for i in range(head_dim):
-        index = sorted_indices[:, :, :, i]  # 当前最高贡献的 channel 索引
-        # breakpoint()
-        cur_score = torch.sum(keys_squared.gather(-1, sorted_indices[:, :, :, :i+1]), dim=-1).unsqueeze(-1)
-        cumulative_sum.scatter_add_(-1, index.unsqueeze(-1), cur_score) 
-        # cumulative_sum.scatter_add_(-1, index.unsqueeze(-1), keys_squared.gather(-1, index.unsqueeze(-1)))  # 更新累积和
-        current_ratio = cumulative_sum / original_norm # 当前累积平方和与原始平方和的比例
-        mask = mask | (current_ratio > threshold_ratio)  # 保留当前 channel
-        if torch.all(cur_score / original_norm > threshold_ratio):
-            print('get threshold! Skip!')
-            # breakpoint()
-            break
-
-    
-    num_selected_channels = torch.sum(mask).item()  # 统计所有位置中被选中的 channel 数量
-    print(f"Number of selected channels: {num_selected_channels}")
-    selected_channels_per_token = torch.sum(mask, dim=-1)  # (bsz, num_heads, seq_len)
-    print(f"Selected channels per token shape: {selected_channels_per_token}")
-    print(f"Example: Selected channels for [batch=0, head=0, token=0]: {selected_channels_per_token[0, 0, 0].item()}")
-    # print(idx)
-            # breakpoint()
-        # if current_ratio >= threshold_ratio and idx == 0:
-        #     idx = i + 1
-        #     print(idx)
-    # Step 4: 裁剪 keys
-    pruned_keys = keys * mask.float()  # 将未保留的 channel 设置为 0
-    return pruned_keys

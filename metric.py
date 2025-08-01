@@ -114,7 +114,7 @@ if __name__ == '__main__':
         ['random'],
         ['snapkv'],
         ['snap_think'],
-        ['snap_adathink']
+        ['snap_quark']
     ]
     
     model2maxlen = json.load(open("longbench/config/model2maxlen.json", "r"))
@@ -124,14 +124,14 @@ if __name__ == '__main__':
         
         results_list[0].append(dataset)
         
-        for idx, method in enumerate(["full_kv", "streaming_llm", 'observed_attention', "expected_attention", "adasnapkv", "criti_snapkv", "tova", "random", "snapkv", "snap_think", 'snap_adathink']):
+        for idx, method in enumerate(["full_kv", "streaming_llm", 'observed_attention', "expected_attention", "adasnapkv", "criti_snapkv", "tova", "random", "snapkv", "snap_think", 'snap_quark']):
             # "streaming_llm" "snapkv" "snap_think" "expected_attention" "adasnapkv" "criti_snapkv" "tova" "random"
         # for idx, method in enumerate(["H2_global", "PyramidKV_global", "local"]):
             try:
                 args.method = method
                 args.dataset = dataset
                 if args.compress_q is not None:
-                    if 'snap_adathink' in method:
+                    if 'snap_quark' in method:
                         # breakpoint()
                         prefix = ""
                         if args.threshold_ratio is not None:
@@ -152,7 +152,7 @@ if __name__ == '__main__':
                     else:
                         args.eval_file = os.path.join("output_norm/results/Meta-Llama-3-8B-Instruct", 'compress_questions', args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}.json")
                 else:
-                    if 'snap_adathink' in method:
+                    if 'snap_quark' in method:
                         # if args.pooling_ratio is not None:
                         #     args.eval_file = os.path.join(args.results_dir, args.tem, args.compress_ratio, 'longbench', dataset, f"{method}__max_context{max_context_length}__no{args.pooling_ratio}__channel{args.com_channel}.json")
                         # else:
