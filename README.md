@@ -32,7 +32,7 @@ bash run2.sh # quark recover with avg
 bash run4.sh # all baselines with think and quark
 ```
 
-The specific parameters can be found in the method's implementation in [quark_press](kvpress0/presses/quark_press.py).
+The specific parameters can be found in the method's implementation in [quark_press](kvpress/presses/quark_press.py).
 
 For more methods (press), see `PRESS_DICT` in [eval.py](eval.py).
 
