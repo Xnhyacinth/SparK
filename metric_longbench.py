@@ -157,6 +157,8 @@ if __name__ == '__main__':
                         score = read_res_json(args.eval_file, f"{method}_{args.com_channel}_{args.pooling_ratio}")
                 else:
                     score = read_res_json(args.eval_file, f"{method}_0.5")
+                    if score == -1:
+                        score = read_res_json(args.eval_file, f"{method}_0.5_{args.pooling_ratio}")
                     
                 if score == -1:
                     score = read_res_json(args.eval_file, f"{method}")
