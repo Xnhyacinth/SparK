@@ -1,10 +1,13 @@
 
 
 
-## Install
+## Installation
 
 ```bash
-bash preinstall.sh
+git clone https://github.com/Xnhyacinth/QuarK.git
+cd QuarK
+poetry install --with dev
+pip install -r requirements.txt
 ```
 
 ## Usage

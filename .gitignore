@@ -3,3 +3,4 @@ output*
 __pycache__/
 assets/
 results/
+*.lock

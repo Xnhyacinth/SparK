@@ -1,11 +1,8 @@
 from dataclasses import dataclass, field
-from sklearn.decomposition import PCA
 import torch
 from torch import nn
 from transformers.models.llama.modeling_llama import rotate_half
-import torch.nn.functional as F
 from kvpress.presses.base_press import BasePress
-import json
 
 
 @dataclass
