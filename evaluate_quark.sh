@@ -9,7 +9,7 @@ threshold_ratio=${7:-"0.0"}
 pooling_ratio=${8:-"0.0"}
 mode=${9:-"no"}
 dataset=${10:-"longbench"}
-value_channel_compression_ratio=${11:-"0.0"}
+value_channel_compression_ratio=${11:-"0"}
 
 extra_args=""
 extra_name=""
