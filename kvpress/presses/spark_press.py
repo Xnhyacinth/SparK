@@ -6,7 +6,7 @@ from kvpress.presses.base_press import BasePress
 
 
 @dataclass
-class QuarKPress(BasePress):
+class SparKPress(BasePress):
 
     key_channel_compression_ratio: float = 0.0
     value_channel_compression_ratio: float = 0.0

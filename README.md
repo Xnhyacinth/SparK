@@ -4,15 +4,15 @@
 ## Installation
 
 ```bash
-git clone https://github.com/Xnhyacinth/QuarK.git
-cd QuarK
+git clone https://github.com/Xnhyacinth/SparK.git
+cd SparK
 poetry install --with dev
 ```
 
 ## Usage
 
 ```bash
-press_names=("snapkv" "pyramidkv" "streaming_llm" "tova" "observed_attention" "expected_attention" "pyramid_quark" "snap_quark" "pyramid_think" "snap_think")
+press_names=("snapkv" "pyramidkv" "streaming_llm" "tova" "observed_attention" "expected_attention" "pyramid_spark" "snap_spark" "pyramid_think" "snap_think")
 
 
 model=${1:-"llama3.1-8b-inst"} # model name
@@ -27,17 +27,17 @@ pooling_ratio=${8:-"0.0"}
 # threshold_ratio choices: 0.0 0.99 0.992 0.996 0.998 0.997...   control dynamic group and topp
 # pooling_ratio choices: 0.0 0.65 0.655 0.75...   control recover method  6* is exp and 7* is norm
 
-bash run2.sh # quark recover with avg
-bash run4.sh # all baselines with think and quark
+bash run2.sh # spark recover with avg
+bash run4.sh # all baselines with think and spark
 ```
 
-The specific parameters can be found in the method's implementation in [quark_press](kvpress/presses/quark_press.py).
+The specific parameters can be found in the method's implementation in [spark_press](kvpress/presses/spark_press.py).
 
 For more methods (press), see `PRESS_DICT` in [eval.py](eval.py).
 
 ### Citation
 
-If you find QuarK or this project is helpful, please kindly consider cite our paper 😊.
+If you find SparK or this project is helpful, please kindly consider cite our paper 😊.
 
 ```bibtex
 
