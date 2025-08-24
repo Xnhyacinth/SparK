@@ -40,7 +40,12 @@ For more methods (press), see `PRESS_DICT` in [eval.py](eval.py).
 If you find SparK or this project is helpful, please kindly consider cite our paper 😊.
 
 ```bibtex
-
+@article{liao2025spark,
+  title={SparK: Query-Aware Unstructured Sparsity with Recoverable KV Cache Channel Pruning},
+  author={Liao, Huanxuan and Xu, Yixing and He, Shizhu and Li, Guanchen and Yin, Xuanwu and Li, Dong and Barsoum, Emad and Zhao, Jun and Liu, Kang},
+  journal={arXiv preprint arXiv:2508.15212},
+  year={2025}
+}
 ```
 
 ### Acknowledgement
