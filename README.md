@@ -1,6 +1,11 @@
 
 # SparK: Query-Aware Unstructured Sparsity with Recoverable KV Cache Channel Pruning
 
+[![Paper](https://img.shields.io/badge/cs.CL-Paper-b31b1b?logo=arxiv&logoColor=red)](https://arxiv.org/abs/2508.15212)
+[![Static Badge](https://img.shields.io/badge/LongBench-🤗-blue)](https://huggingface.co/datasets/Xnhyacinth/LongBench)
+[![Static Badge](https://img.shields.io/badge/LongBenchv2-🤗-blue)](https://huggingface.co/datasets/Xnhyacinth/LongBench-v2)
+[![Static Badge](https://img.shields.io/badge/Ruler-🤗-green)](https://huggingface.co/datasets/simonjegou/ruler)
+
 ## Installation
 
 ```bash
